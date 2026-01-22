@@ -108,6 +108,15 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""AOA"",
+                    ""type"": ""Button"",
+                    ""id"": ""a1b2c3d4-e5f6-7890-abcd-ef1234567890"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -154,6 +163,17 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
                     ""action"": ""Gun"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""b2c3d4e5-f6a7-8901-bcde-f23456789012"",
+                    ""path"": ""<Keyboard>/leftShift"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""AOA"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
                 }
             ]
         }
@@ -181,6 +201,7 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
         m_Player = asset.FindActionMap("Player", throwIfNotFound: true);
         m_Player_Throttle = m_Player.FindAction("Throttle", throwIfNotFound: true);
         m_Player_Gun = m_Player.FindAction("Gun", throwIfNotFound: true);
+        m_Player_AOA = m_Player.FindAction("AOA", throwIfNotFound: true);
     }
 
     ~@AircraftControls()
@@ -263,6 +284,7 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
     private List<IPlayerActions> m_PlayerActionsCallbackInterfaces = new List<IPlayerActions>();
     private readonly InputAction m_Player_Throttle;
     private readonly InputAction m_Player_Gun;
+    private readonly InputAction m_Player_AOA;
     /// <summary>
     /// Provides access to input actions defined in input action map "Player".
     /// </summary>
@@ -282,6 +304,10 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Player/Gun".
         /// </summary>
         public InputAction @Gun => m_Wrapper.m_Player_Gun;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/AOA".
+        /// </summary>
+        public InputAction @AOA => m_Wrapper.m_Player_AOA;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -314,6 +340,9 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
             @Gun.started += instance.OnGun;
             @Gun.performed += instance.OnGun;
             @Gun.canceled += instance.OnGun;
+            @AOA.started += instance.OnAOA;
+            @AOA.performed += instance.OnAOA;
+            @AOA.canceled += instance.OnAOA;
         }
 
         /// <summary>
@@ -331,6 +360,9 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
             @Gun.started -= instance.OnGun;
             @Gun.performed -= instance.OnGun;
             @Gun.canceled -= instance.OnGun;
+            @AOA.started -= instance.OnAOA;
+            @AOA.performed -= instance.OnAOA;
+            @AOA.canceled -= instance.OnAOA;
         }
 
         /// <summary>
@@ -398,5 +430,12 @@ public partial class @AircraftControls: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnGun(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "AOA" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnAOA(InputAction.CallbackContext context);
     }
 }

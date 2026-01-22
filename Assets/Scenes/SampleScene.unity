@@ -977,8 +977,24 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1335585336}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: drag
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: thrust
       value: 12000
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: yawSpeed
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: rotationD
+      value: 2.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: rotationP
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: speedText
@@ -986,19 +1002,27 @@ PrefabInstance:
       objectReference: {fileID: 2004562270}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: pitchSpeed
-      value: 5
+      value: 50
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: enginePower
-      value: 1000
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: lateralDrag
+      value: 0.3
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: altitudeText
       value: 
       objectReference: {fileID: 647699429}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: minLiftSpeed
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: maxAoAWithLimiter
-      value: 5
+      value: 15
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

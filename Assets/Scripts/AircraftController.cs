@@ -10,11 +10,12 @@ public class AircraftController : MonoBehaviour
 {
     [Header("비행기 물리")]
     public Rigidbody rb;
-    public float enginePower = 50f;
-    public float drag = 0.02f;
-    public float lateralDrag = 0.5f; // 측면 항력 (전진 방향이 아닌 힘에 저항)
-    public float liftCoefficient = 5f; // 양력 계수
-    public float minLiftSpeed = 10f; // 양력이 발생하는 최소 속도
+    public float enginePower = 100f;
+    public float drag = 0.01f; // 전방 항력 (낮을수록 관성 유지)
+    public float lateralDrag = 0.3f; // 측면 항력 (높을수록 기체 방향으로 정렬)
+    public float liftCoefficient = 2f; // 양력 계수
+    public float minLiftSpeed = 30f; // 양력이 발생하는 최소 속도
+    public float stallSpeed = 50f; // 실속 속도 (이 속도 이하에서 양력 급감)
 
     [Header("조종 속도")]
     public float pitchSpeed = 30f;
@@ -22,10 +23,10 @@ public class AircraftController : MonoBehaviour
     public float rollSpeed = 50f;
 
     [Header("안정성 설정")]
-    [Range(0f, 1f)]
-    public float angularDamping = 0.5f; // 각속도 감쇠
-    [Range(0.1f, 5f)]
-    public float rotationSmoothness = 1.5f; // 회전 부드러움
+    [Range(0f, 10f)]
+    public float rotationP = 5f; // 회전 비례 제어 (높을수록 빠르게 반응)
+    [Range(0f, 5f)]
+    public float rotationD = 2.5f; // 회전 미분 제어 (높을수록 오버슈트 감소, 덜렁거림 방지)
 
     [Header("UI")]
     public TextMeshProUGUI altitudeText;
@@ -38,6 +39,8 @@ public class AircraftController : MonoBehaviour
     public float maxAoAWithoutLimiter = 45f; // 제한기 OFF 시 최대 받음각
     [Tooltip("받음각 제한 강도")]
     public float aoaLimiterStrength = 30f;
+    [Tooltip("AOA 해제 후 쿨타임 (초)")]
+    public float aoaCooldown = 5f;
 
     // A reference to the CameraController to get the target direction
     private CameraController cameraController;
@@ -46,10 +49,17 @@ public class AircraftController : MonoBehaviour
     private float pitchInput;
     private float rollInput;
 
-    // 받음각 제한기 상태
-    private bool aoaLimiterEnabled = true;
+    // AOA 제한기 상태
+    private bool aoaInputPressed = false; // 현재 키 입력 상태
+    private bool aoaInputPressedLastFrame = false; // 이전 프레임 입력 상태 (에지 검출용)
+    private bool aoaOnCooldown = false; // 쿨타임 중인지
+    private float aoaCooldownTimer = 0f; // 쿨타임 타이머
+
     // 현재 받음각 (디버깅용)
     private float currentAoA = 0f;
+
+    // AOA 제한기가 실제로 해제되었는지 (입력 + 쿨타임 아님)
+    private bool IsAoALimiterDisabled => aoaInputPressed && !aoaOnCooldown;
 
     void Start()
     {
@@ -79,12 +89,8 @@ public class AircraftController : MonoBehaviour
             speedText.text = $"Speed: {rb.linearVelocity.magnitude:F1} m/s";
         }
 
-        // 받음각 제한기 토글 (Left Shift)
-        if (Input.GetKeyDown(KeyCode.LeftShift))
-        {
-            aoaLimiterEnabled = !aoaLimiterEnabled;
-            Debug.Log($"AoA Limiter: {(aoaLimiterEnabled ? "ON" : "OFF")}");
-        }
+        // AOA 쿨타임 처리
+        UpdateAoACooldown();
     }
 
     void FixedUpdate()
@@ -94,6 +100,7 @@ public class AircraftController : MonoBehaviour
         ApplyAerodynamics(); // 양력과 항력을 함께 처리
         ApplyControlTorque();
         ApplyAngularDamping();
+        ApplyAoALimiter(); // AOA 제한기 적용
     }
 
     // Applies forward thrust based on throttle input
@@ -126,59 +133,75 @@ public class AircraftController : MonoBehaviour
         Vector3 localVel = transform.InverseTransformDirection(velocity.normalized);
         currentAoA = Mathf.Atan2(localVel.y, localVel.z) * Mathf.Rad2Deg;
 
-        // 1. 방향별 항력 (Directional Drag)
+        // 1. 방향별 항력
         Vector3 localVelocity = transform.InverseTransformDirection(velocity);
 
         Vector3 localDragForce = Vector3.zero;
-        localDragForce.z = -localVelocity.z * Mathf.Abs(localVelocity.z) * drag;
+        // 전방 항력: 선형 비례 (관성 유지)
+        localDragForce.z = -localVelocity.z * drag * rb.mass;
+        // 측면 항력: 제곱 비례 (미끄러짐 강하게 억제, 기체 방향으로 정렬)
         localDragForce.x = -localVelocity.x * Mathf.Abs(localVelocity.x) * lateralDrag;
-        localDragForce.y = -localVelocity.y * Mathf.Abs(localVelocity.y) * lateralDrag * 0.7f;
+        // 수직 항력: 제곱 비례
+        localDragForce.y = -localVelocity.y * Mathf.Abs(localVelocity.y) * lateralDrag * 0.5f;
 
         Vector3 worldDragForce = transform.TransformDirection(localDragForce);
         rb.AddForce(worldDragForce, ForceMode.Force);
 
-        // 2. 양력 (Lift) - 받음각 기반
-        if (speed > minLiftSpeed)
+        // 2. 양력 (Lift) - 속도와 받음각 기반
+        // 실속 속도 이하에서는 양력 급감
+        float speedFactor = 0f;
+        if (speed > stallSpeed)
         {
-            float speedRatio = speed / minLiftSpeed;
-            float baseLift = speedRatio * speedRatio * liftCoefficient * rb.mass; // 질량에 비례
+            // 실속 속도 이상: 정상 양력
+            speedFactor = 1f;
+        }
+        else if (speed > minLiftSpeed)
+        {
+            // 실속 구간: 양력 급감
+            float t = (speed - minLiftSpeed) / (stallSpeed - minLiftSpeed);
+            speedFactor = t * t; // 제곱으로 급격히 감소
+        }
+        // minLiftSpeed 이하: 양력 없음
 
-            // 받음각에 따른 양력 계산 (받음각 곡선)
-            // -15° ~ +15° 범위에서 최대 양력, 그 이상은 감소
+        if (speedFactor > 0f)
+        {
+            float baseLift = speed * liftCoefficient * rb.mass / 100f;
+
+            // 받음각에 따른 양력 계산
             float aoaFactor = 0f;
             float absAoA = Mathf.Abs(currentAoA);
 
             if (absAoA <= 15f)
             {
                 // 선형 증가
-                aoaFactor = absAoA / 15f;
+                aoaFactor = 0.2f + (absAoA / 15f) * 0.8f;
             }
-            else if (absAoA <= 30f)
+            else if (absAoA <= 25f)
             {
-                // 점진적 감소 (실속 전)
-                aoaFactor = 1f - (absAoA - 15f) / 15f * 0.5f;
+                // 최대 양력 구간
+                aoaFactor = 1f;
+            }
+            else if (absAoA <= 40f)
+            {
+                // 실속 시작 - 급격한 감소
+                aoaFactor = 1f - (absAoA - 25f) / 15f;
             }
             else
             {
-                // 급격한 감소 (실속)
-                aoaFactor = 0.5f - (absAoA - 30f) / 30f * 0.5f;
-                aoaFactor = Mathf.Max(0f, aoaFactor);
+                // 완전 실속
+                aoaFactor = 0f;
             }
 
             // 기체가 위를 향하는 정도
             float upDot = Vector3.Dot(transform.up, Vector3.up);
-            upDot = Mathf.Clamp01(upDot);
+            upDot = Mathf.Clamp(upDot, -0.5f, 1f); // 뒤집히면 역양력
 
-            // 최소 양력 보정 (수평 비행 시에도 약간의 양력)
-            float minLiftFactor = 0.3f;
-            aoaFactor = Mathf.Max(aoaFactor, minLiftFactor);
-
-            float liftPower = baseLift * aoaFactor * upDot;
+            float liftPower = baseLift * aoaFactor * speedFactor * upDot;
             Vector3 liftForce = transform.up * liftPower;
             rb.AddForce(liftForce, ForceMode.Force);
 
             // 디버그
-            Debug.DrawRay(transform.position, transform.up * (liftPower / 1000f), Color.green, 0.1f);
+            Debug.DrawRay(transform.position, transform.up * (liftPower / 100f), Color.green, 0.1f);
         }
     }
 
@@ -201,42 +224,44 @@ public class AircraftController : MonoBehaviour
         if (angle > 180f)
             angle -= 360f;
 
-        // 회전이 거의 완료되었으면 스킵
-        if (Mathf.Abs(angle) < 0.5f)
-        {
-            // 아주 작은 차이는 직접 보정
-            if (Mathf.Abs(angle) > 0.01f)
-            {
-                transform.rotation = Quaternion.Slerp(currentRotation, targetRotation, Time.fixedDeltaTime * 10f);
-            }
-            return;
-        }
-
         // 월드 공간의 회전 축을 정규화
-        axis.Normalize();
+        if (axis.sqrMagnitude > 0.001f)
+            axis.Normalize();
+        else
+            return;
 
-        // 각도를 라디안으로 변환
-        float angleRad = angle * Mathf.Deg2Rad;
+        // 로컬 축으로 변환
+        Vector3 localAxis = transform.InverseTransformDirection(axis);
 
-        // 각 축별로 토크 계산 (월드 축 기준)
-        Vector3 torqueVector = axis * angleRad * rotationSmoothness;
+        // 현재 로컬 각속도 (degree/초)
+        Vector3 localAngularVelocityDeg = transform.InverseTransformDirection(rb.angularVelocity) * Mathf.Rad2Deg;
 
-        // 각 로컬 축에 투영하여 개별 속도 제한 적용
-        Vector3 localTorque = transform.InverseTransformDirection(torqueVector);
+        // 각 축별 목표 각속도 계산 (degree/초)
+        // 목표와의 각도 차이에 비례하되, 최대 속도 제한
+        Vector3 targetAngularVelocity = new Vector3(
+            Mathf.Clamp(localAxis.x * angle * rotationP, -pitchSpeed, pitchSpeed),
+            Mathf.Clamp(localAxis.y * angle * rotationP, -yawSpeed, yawSpeed),
+            Mathf.Clamp(localAxis.z * angle * rotationP, -rollSpeed, rollSpeed)
+        );
 
-        localTorque.x = Mathf.Clamp(localTorque.x * pitchSpeed, -pitchSpeed, pitchSpeed);
-        localTorque.y = Mathf.Clamp(localTorque.y * yawSpeed, -yawSpeed, yawSpeed);
-        localTorque.z = Mathf.Clamp(localTorque.z * rollSpeed, -rollSpeed, rollSpeed);
+        // 목표 각속도와 현재 각속도의 차이
+        Vector3 angularVelocityError = targetAngularVelocity - localAngularVelocityDeg;
 
-        // 로컬 토크를 월드 공간으로 변환하여 적용
-        Vector3 worldTorque = transform.TransformDirection(localTorque);
+        // 토크 계산 (각가속도)
+        // rotationP: 목표 추종 속도, rotationD: 댐핑 (오버슈트 방지)
+        Vector3 localTorque = angularVelocityError * rotationP - localAngularVelocityDeg * rotationD * 0.1f;
+
+        // degree를 radian으로 변환하여 적용
+        Vector3 worldTorque = transform.TransformDirection(localTorque * Mathf.Deg2Rad);
         rb.AddTorque(worldTorque, ForceMode.Acceleration);
     }
 
-    // 각속도 댐핑 적용으로 나풀거림 방지
+    // PD 컨트롤러에 D항이 포함되어 있으므로 별도 damping 불필요
     void ApplyAngularDamping()
     {
-        rb.angularVelocity *= (1f - angularDamping * Time.fixedDeltaTime * 10f);
+        // PD 컨트롤러의 D항이 damping 역할을 하므로 비활성화
+        // 필요시 추가 damping:
+        // rb.angularVelocity *= 0.99f;
     }
 
     // Set input values from external scripts (CameraController)
@@ -249,6 +274,49 @@ public class AircraftController : MonoBehaviour
     {
         pitchInput = pitch;
         rollInput = roll;
+    }
+
+    // AOA 입력 처리 (홀드 키)
+    public void SetAOAInput(bool pressed)
+    {
+        // 쿨타임 중이면 무시 (쿨타임 끝나면 바로 발동되도록 lastFrame은 false 유지)
+        if (aoaOnCooldown)
+        {
+            aoaInputPressed = false;
+            aoaInputPressedLastFrame = false;
+            return;
+        }
+
+        // 에지 검출: 누르는 순간 (false → true)
+        if (pressed && !aoaInputPressedLastFrame)
+        {
+            Debug.Log("AOA 제한기 해제!");
+        }
+        // 에지 검출: 떼는 순간 (true → false)
+        else if (!pressed && aoaInputPressedLastFrame)
+        {
+            aoaOnCooldown = true;
+            aoaCooldownTimer = aoaCooldown;
+            Debug.Log($"AOA 쿨타임 시작: {aoaCooldown}초");
+        }
+
+        aoaInputPressed = pressed;
+        aoaInputPressedLastFrame = pressed;
+    }
+
+    // AOA 쿨타임 업데이트
+    void UpdateAoACooldown()
+    {
+        if (aoaOnCooldown)
+        {
+            aoaCooldownTimer -= Time.deltaTime;
+            if (aoaCooldownTimer <= 0f)
+            {
+                aoaOnCooldown = false;
+                aoaCooldownTimer = 0f;
+                Debug.Log("AOA 쿨타임 종료 - 사용 가능");
+            }
+        }
     }
 
     // Connects the CameraController to this script
@@ -313,7 +381,8 @@ public class AircraftController : MonoBehaviour
     // 받음각 제한기 (AoA Limiter)
     void ApplyAoALimiter()
     {
-        if (!aoaLimiterEnabled) return;
+        // AOA 제한기가 해제되었으면 제한 없음
+        if (IsAoALimiterDisabled) return;
 
         float speed = rb.linearVelocity.magnitude;
         if (speed < 5f) return; // 저속에서는 제한 안함
@@ -331,4 +400,10 @@ public class AircraftController : MonoBehaviour
             rb.AddTorque(transform.right * correctionTorque, ForceMode.Acceleration);
         }
     }
+
+    // AOA 상태 확인용 프로퍼티
+    public bool IsAoAActive => IsAoALimiterDisabled; // AOA가 현재 활성화 상태인지
+    public bool IsAoAOnCooldown => aoaOnCooldown;
+    public float AoACooldownRemaining => aoaCooldownTimer;
+    public float CurrentAoA => currentAoA;
 }
