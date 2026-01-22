@@ -986,7 +986,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: yawSpeed
-      value: 50
+      value: 90
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: rollSpeed
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: rotationD
@@ -1002,7 +1006,7 @@ PrefabInstance:
       objectReference: {fileID: 2004562270}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: pitchSpeed
-      value: 50
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: enginePower
@@ -1022,7 +1026,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: maxAoAWithLimiter
-      value: 15
+      value: 180
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: aoaLimiterStrength
+      value: 100
+      objectReference: {fileID: 0}
+    - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
+      propertyPath: maxAoAWithoutLimiter
+      value: 90
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
