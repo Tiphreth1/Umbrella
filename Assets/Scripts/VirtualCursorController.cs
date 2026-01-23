@@ -12,10 +12,6 @@ public class VirtualCursorController : MonoBehaviour
     [Header("감도 설정")]
     [Range(0.1f, 10f)]
     public float sensitivity = 2f;
-    [Range(0f, 5f)]
-    public float returnSpeed = 1f;
-    [Range(1f, 50f)]
-    public float centerStopRadius = 10f;
 
     [Header("커서 제한 설정")]
     public bool confineCursor = false;
@@ -25,19 +21,18 @@ public class VirtualCursorController : MonoBehaviour
     public bool lockRealCursor = true;
     public bool hideRealCursor = true;
 
-    [Header("중앙 복귀 감지")]
+    [Header("입력 감지")]
     public float inputThreshold = 0.1f;
-    public float centeringThreshold = 0.2f;
 
     private Vector2 virtualCursorPos;
     private Vector2 screenCenter;
     private bool wasApplicationFocused = true;
     private bool isInitialized = false;
-
-    // 중앙 복귀 감지를 위한 변수들
-    private Vector2 lastCursorPos;
-    private bool isReturningToCenter = false;
     private bool hasActiveMouseInput = false;
+
+    // 부드러운 중앙 복귀용
+    private bool isAutoLeveling = false;
+    private Vector2 cursorVelocity = Vector2.zero;
 
     // 카메라 컨트롤러 참조
     private CameraController cameraController;
@@ -69,7 +64,6 @@ public class VirtualCursorController : MonoBehaviour
         // 다시 한번 화면 중앙 계산 (해상도 변경 대응)
         UpdateScreenCenter();
         virtualCursorPos = screenCenter;
-        lastCursorPos = virtualCursorPos;
 
         SetupRealCursor();
         isInitialized = true;
@@ -107,11 +101,13 @@ public class VirtualCursorController : MonoBehaviour
         if (hasMouseInput)
         {
             virtualCursorPos += adjustedDelta;
-            isReturningToCenter = false;
+            isAutoLeveling = false;
+            cursorVelocity = Vector2.zero;
         }
-        else if (returnSpeed > 0f)
+        else if (isAutoLeveling)
         {
-            HandleCenterReturn();
+            // 수평 복귀 중: SmoothDamp로 부드럽게 중앙으로 이동
+            virtualCursorPos = Vector2.SmoothDamp(virtualCursorPos, screenCenter, ref cursorVelocity, 0.15f);
         }
 
         if (confineCursor)
@@ -124,36 +120,6 @@ public class VirtualCursorController : MonoBehaviour
         {
             Vector2 screenCenterInt = new Vector2(Mathf.RoundToInt(screenCenter.x), Mathf.RoundToInt(screenCenter.y));
             Mouse.current.WarpCursorPosition(screenCenterInt);
-        }
-
-        lastCursorPos = virtualCursorPos;
-    }
-
-    void HandleCenterReturn()
-    {
-        Vector2 toCenter = screenCenter - virtualCursorPos;
-        float distanceToCenter = toCenter.magnitude;
-
-        if (distanceToCenter <= centerStopRadius)
-        {
-            virtualCursorPos = screenCenter;
-            isReturningToCenter = false;
-        }
-        else
-        {
-            Vector2 moveDirection = toCenter.normalized;
-            float moveSpeed = Time.deltaTime * returnSpeed;
-            Vector2 targetPoint = screenCenter - moveDirection * centerStopRadius;
-
-            Vector2 newPos = Vector2.Lerp(virtualCursorPos, targetPoint, moveSpeed);
-
-            Vector2 moveVector = newPos - virtualCursorPos;
-            float returnVelocity = moveVector.magnitude / Time.deltaTime;
-
-            bool isMovingToCenter = Vector2.Dot(moveVector.normalized, moveDirection) > 0.8f;
-            isReturningToCenter = isMovingToCenter && returnVelocity > centeringThreshold;
-
-            virtualCursorPos = newPos;
         }
     }
 
@@ -184,15 +150,6 @@ public class VirtualCursorController : MonoBehaviour
 
         normalizedInput = Vector2.ClampMagnitude(normalizedInput, 1f);
 
-        if (isReturningToCenter || !hasActiveMouseInput)
-        {
-            float distanceFromCenter = normalizedInput.magnitude;
-            if (distanceFromCenter < 0.03f)
-            {
-                normalizedInput = Vector2.zero;
-            }
-        }
-
         float pitch = -normalizedInput.y;
         float roll = normalizedInput.x;
 
@@ -219,14 +176,18 @@ public class VirtualCursorController : MonoBehaviour
             offset.y / (Screen.height * 0.5f)
         );
     }
-    public bool IsReturningToCenter() => isReturningToCenter;
     public bool HasActiveMouseInput() => hasActiveMouseInput;
 
     public void ResetCursorToCenter()
     {
         virtualCursorPos = screenCenter;
-        isReturningToCenter = false;
         hasActiveMouseInput = false;
+    }
+
+    // 수평 복귀 시작 (카메라 수평 복귀와 동기화)
+    public void StartAutoLevelCentering()
+    {
+        isAutoLeveling = true;
     }
 
     void SetupRealCursor()
@@ -278,19 +239,13 @@ public class VirtualCursorController : MonoBehaviour
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(worldCenter, 1f);
 
-            Gizmos.color = Color.cyan;
-            float worldRadius = centerStopRadius * Camera.main.orthographicSize * 2f / Screen.height;
-            Gizmos.DrawWireSphere(worldCenter, worldRadius);
-
-            Gizmos.color = isReturningToCenter ? Color.green : Color.red;
-            Gizmos.DrawSphere(worldCursor, 0.5f);
-
             Gizmos.color = hasActiveMouseInput ? Color.blue : Color.green;
+            Gizmos.DrawSphere(worldCursor, 0.5f);
             Gizmos.DrawLine(worldCenter, worldCursor);
 
             if (confineCursor)
             {
-                Gizmos.color = Color.blue;
+                Gizmos.color = Color.cyan;
                 Vector3 topLeft = Camera.main.ScreenToWorldPoint(new Vector3(screenMargin.x, Screen.height - screenMargin.y, 10f));
                 Vector3 topRight = Camera.main.ScreenToWorldPoint(new Vector3(Screen.width - screenMargin.x, Screen.height - screenMargin.y, 10f));
                 Vector3 bottomLeft = Camera.main.ScreenToWorldPoint(new Vector3(screenMargin.x, screenMargin.y, 10f));

@@ -21,12 +21,15 @@ public class AircraftController : MonoBehaviour
     public float pitchSpeed = 30f;
     public float yawSpeed = 20f;
     public float rollSpeed = 50f;
+    public float aoaSpeedMultiplier = 1.5f; // AOA 해제 시 기체 회전 속도 배율
 
     [Header("안정성 설정")]
     [Range(0f, 10f)]
     public float rotationP = 5f; // 회전 비례 제어 (높을수록 빠르게 반응)
     [Range(0f, 5f)]
     public float rotationD = 2.5f; // 회전 미분 제어 (높을수록 오버슈트 감소, 덜렁거림 방지)
+    [Range(0f, 1f)]
+    public float worldLevelStrength = 0.3f; // 월드 수평 복귀 강도 (0=카메라만, 1=월드만)
 
     [Header("UI")]
     public TextMeshProUGUI altitudeText;
@@ -210,45 +213,61 @@ public class AircraftController : MonoBehaviour
     {
         if (cameraController == null) return;
 
-        // Get the target direction from the camera
-        Quaternion targetRotation = cameraController.transform.rotation;
-        Quaternion currentRotation = transform.rotation;
+        Transform cam = cameraController.transform;
 
-        // Calculate the shortest rotation difference
-        Quaternion rotationDifference = targetRotation * Quaternion.Inverse(currentRotation);
+        // === Pitch & Yaw: forward 방향 맞추기 (angle-axis 방식) ===
+        Vector3 targetForward = cam.forward;
+        Vector3 currentForward = transform.forward;
 
-        // Convert to angle-axis
-        rotationDifference.ToAngleAxis(out float angle, out Vector3 axis);
+        // forward 방향만을 위한 회전 계산
+        Quaternion forwardRotation = Quaternion.FromToRotation(currentForward, targetForward);
+        forwardRotation.ToAngleAxis(out float forwardAngle, out Vector3 forwardAxis);
 
-        // Normalize angle to [-180, 180]
-        if (angle > 180f)
-            angle -= 360f;
+        if (forwardAngle > 180f) forwardAngle -= 360f;
 
-        // 월드 공간의 회전 축을 정규화
-        if (axis.sqrMagnitude > 0.001f)
-            axis.Normalize();
-        else
-            return;
+        Vector3 localForwardAxis = Vector3.zero;
+        if (forwardAxis.sqrMagnitude > 0.001f)
+        {
+            forwardAxis.Normalize();
+            localForwardAxis = transform.InverseTransformDirection(forwardAxis);
+        }
 
-        // 로컬 축으로 변환
-        Vector3 localAxis = transform.InverseTransformDirection(axis);
+        // Pitch와 Yaw 오차 (forward 방향 일치용)
+        float pitchError = localForwardAxis.x * forwardAngle;
+        float yawError = localForwardAxis.y * forwardAngle;
+
+        // === Roll: 카메라 롤 + 월드 수평 블렌딩 ===
+        // 카메라 롤 오차 (카메라 up 기준)
+        Vector3 camUpLocal = transform.InverseTransformDirection(cam.up);
+        float cameraRollError = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
+
+        // 월드 수평 오차 (월드 up 기준)
+        Vector3 worldUpLocal = transform.InverseTransformDirection(Vector3.up);
+        float worldRollError = Mathf.Atan2(-worldUpLocal.x, worldUpLocal.y) * Mathf.Rad2Deg;
+
+        // 블렌딩: 카메라 롤을 따라가되, 월드 수평으로도 복귀하려는 경향
+        float rollError = Mathf.Lerp(cameraRollError, worldRollError, worldLevelStrength);
 
         // 현재 로컬 각속도 (degree/초)
         Vector3 localAngularVelocityDeg = transform.InverseTransformDirection(rb.angularVelocity) * Mathf.Rad2Deg;
 
+        // AOA 해제 시 회전 속도 증가
+        float speedMult = IsAoALimiterDisabled ? aoaSpeedMultiplier : 1f;
+        float currentPitchSpeed = pitchSpeed * speedMult;
+        float currentYawSpeed = yawSpeed * speedMult;
+        float currentRollSpeed = rollSpeed * speedMult;
+
         // 각 축별 목표 각속도 계산 (degree/초)
-        // 목표와의 각도 차이에 비례하되, 최대 속도 제한
         Vector3 targetAngularVelocity = new Vector3(
-            Mathf.Clamp(localAxis.x * angle * rotationP, -pitchSpeed, pitchSpeed),
-            Mathf.Clamp(localAxis.y * angle * rotationP, -yawSpeed, yawSpeed),
-            Mathf.Clamp(localAxis.z * angle * rotationP, -rollSpeed, rollSpeed)
+            Mathf.Clamp(pitchError * rotationP, -currentPitchSpeed, currentPitchSpeed),
+            Mathf.Clamp(yawError * rotationP, -currentYawSpeed, currentYawSpeed),
+            Mathf.Clamp(rollError * rotationP, -currentRollSpeed, currentRollSpeed)
         );
 
         // 목표 각속도와 현재 각속도의 차이
         Vector3 angularVelocityError = targetAngularVelocity - localAngularVelocityDeg;
 
         // 토크 계산 (각가속도)
-        // rotationP: 목표 추종 속도, rotationD: 댐핑 (오버슈트 방지)
         Vector3 localTorque = angularVelocityError * rotationP - localAngularVelocityDeg * rotationD * 0.1f;
 
         // degree를 radian으로 변환하여 적용

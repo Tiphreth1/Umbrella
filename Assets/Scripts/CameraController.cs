@@ -93,6 +93,44 @@ public class CameraController : MonoBehaviour
 
         transform.Rotate(Vector3.right, pitchRotation, Space.Self);
         transform.Rotate(Vector3.forward, rollRotation, Space.Self);
+
+        // 마우스를 움직이지 않을 때 자동 수평 복귀
+        bool hasMouseMovement = virtualCursor != null && virtualCursor.HasActiveMouseInput();
+        if (!hasMouseMovement)
+        {
+            ApplyAutoLevel();
+        }
+    }
+
+    void ApplyAutoLevel()
+    {
+        if (aircraftController == null) return;
+
+        Vector3 currentForward = transform.forward;
+
+        // forward가 거의 수직이면 수평 복귀 불가 (gimbal lock 방지)
+        if (Mathf.Abs(Vector3.Dot(currentForward, Vector3.up)) > 0.99f)
+            return;
+
+        // 목표 up: forward에 수직이면서 월드 up에 최대한 가까운 벡터
+        Vector3 targetUp = Vector3.up - Vector3.Dot(Vector3.up, currentForward) * currentForward;
+        targetUp.Normalize();
+
+        // 현재 up과 목표 up 사이의 각도 (수평까지 남은 각도)
+        float angleToLevel = Vector3.SignedAngle(transform.up, targetUp, currentForward);
+
+        // 기체의 rollSpeed에 맞춰 최대 회전 속도 제한
+        float maxRotation = aircraftController.rollSpeed * Time.deltaTime;
+        float actualRotation = Mathf.Clamp(angleToLevel, -maxRotation, maxRotation);
+
+        // forward 축을 기준으로 회전 (roll만 변경)
+        transform.Rotate(Vector3.forward, actualRotation, Space.Self);
+
+        // 커서도 부드럽게 중앙으로 이동 시작
+        if (virtualCursor != null)
+        {
+            virtualCursor.StartAutoLevelCentering();
+        }
     }
 
     // Sync the camera's position with the aircraft's Rigidbody
@@ -127,4 +165,7 @@ public class CameraController : MonoBehaviour
         pitchInput = pitch;
         rollInput = roll;
     }
+
+    // 현재 롤 입력값 (외부에서 확인용)
+    public float RollInput => rollInput;
 }
