@@ -8,14 +8,23 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public class AircraftController : MonoBehaviour
 {
+    [Header("비행기 프로필")]
+    [Tooltip("비행기 특성 프로필 (없으면 아래 기본값 사용)")]
+    public AircraftProfile profile;
+
     [Header("비행기 물리")]
     public Rigidbody rb;
     public float enginePower = 100f;
-    public float drag = 0.01f; // 전방 항력 (낮을수록 관성 유지)
+    public float drag = 0.001f; // 전방 항력 계수 (속도² 기반)
     public float lateralDrag = 0.3f; // 측면 항력 (높을수록 기체 방향으로 정렬)
-    public float liftCoefficient = 2f; // 양력 계수
+    public float inducedDragCoefficient = 0.05f; // 유도 항력 계수 (받음각에 따른 추가 항력)
+    public float liftCoefficient = 0.0003f; // 양력 계수 (속도² 기반)
     public float minLiftSpeed = 30f; // 양력이 발생하는 최소 속도
     public float stallSpeed = 50f; // 실속 속도 (이 속도 이하에서 양력 급감)
+
+    [Header("고도 제한")]
+    public float maxAltitude = 15000f; // 최대 고도 (m) - 이 이상에서 엔진 효율 0
+    public float altitudeEffectStart = 8000f; // 고도 효과 시작점 - 이 고도부터 효율 감소 시작
 
     [Header("조종 속도")]
     public float pitchSpeed = 30f;
@@ -70,6 +79,13 @@ public class AircraftController : MonoBehaviour
         {
             rb = GetComponent<Rigidbody>();
         }
+
+        // 프로필이 있으면 적용
+        if (profile != null)
+        {
+            ApplyProfile(profile);
+        }
+
         // Use realistic gravity setting
         rb.useGravity = true;
         // CRITICAL: Rigidbody의 기본 Drag를 0으로 설정 (우리가 직접 계산하므로)
@@ -77,7 +93,55 @@ public class AircraftController : MonoBehaviour
         rb.angularDamping = 0f; // 각속도 댐핑도 우리가 직접 계산
         rb.linearVelocity = transform.forward * 80f; // 80 m/s (288 km/h)로 시작
 
-        Debug.Log($"Aircraft initialized - Mass: {rb.mass}kg");
+        Debug.Log($"Aircraft initialized - {(profile != null ? profile.aircraftName : "Default")} - Mass: {rb.mass}kg");
+    }
+
+    // 프로필 적용 (런타임에서도 호출 가능)
+    public void ApplyProfile(AircraftProfile newProfile)
+    {
+        if (newProfile == null) return;
+
+        profile = newProfile;
+
+        // 엔진
+        enginePower = newProfile.enginePower;
+        maxAltitude = newProfile.maxAltitude;
+        altitudeEffectStart = newProfile.altitudeEffectStart;
+
+        // 공력
+        drag = newProfile.drag;
+        lateralDrag = newProfile.lateralDrag;
+        inducedDragCoefficient = newProfile.inducedDragCoefficient;
+        liftCoefficient = newProfile.liftCoefficient;
+
+        // 실속
+        minLiftSpeed = newProfile.minLiftSpeed;
+        stallSpeed = newProfile.stallSpeed;
+
+        // 기동성
+        pitchSpeed = newProfile.pitchSpeed;
+        yawSpeed = newProfile.yawSpeed;
+        rollSpeed = newProfile.rollSpeed;
+
+        // 안정성
+        rotationP = newProfile.rotationP;
+        rotationD = newProfile.rotationD;
+        worldLevelStrength = newProfile.worldLevelStrength;
+
+        // AOA
+        maxAoAWithLimiter = newProfile.maxAoAWithLimiter;
+        maxAoAWithoutLimiter = newProfile.maxAoAWithoutLimiter;
+        aoaLimiterStrength = newProfile.aoaLimiterStrength;
+        aoaSpeedMultiplier = newProfile.aoaSpeedMultiplier;
+        aoaCooldown = newProfile.aoaCooldown;
+
+        // 질량
+        if (rb != null)
+        {
+            rb.mass = newProfile.mass;
+        }
+
+        Debug.Log($"Profile applied: {newProfile.aircraftName}");
     }
 
     void Update()
@@ -85,7 +149,9 @@ public class AircraftController : MonoBehaviour
         // Update UI displays
         if (altitudeText != null)
         {
-            altitudeText.text = $"Altitude: {transform.position.y:F1} m";
+            float efficiency = GetAltitudeEfficiency();
+            string efficiencyStr = efficiency < 1f ? $" ({efficiency * 100:F0}%)" : "";
+            altitudeText.text = $"Altitude: {transform.position.y:F0} m{efficiencyStr}";
         }
         if (speedText != null)
         {
@@ -107,11 +173,28 @@ public class AircraftController : MonoBehaviour
     }
 
     // Applies forward thrust based on throttle input
-    // 기체의 forward 방향으로 추진력 적용 (원래대로)
+    // 기체의 forward 방향으로 추진력 적용, 고도에 따른 효율 감소
     void ApplyThrust()
     {
-        Vector3 thrustForce = transform.forward * throttleInput * enginePower;
+        float altitudeEfficiency = GetAltitudeEfficiency();
+        Vector3 thrustForce = transform.forward * throttleInput * enginePower * altitudeEfficiency;
         rb.AddForce(thrustForce, ForceMode.Force);
+    }
+
+    // 고도에 따른 엔진/공력 효율 계산 (공기 밀도 감소 시뮬레이션)
+    float GetAltitudeEfficiency()
+    {
+        float altitude = transform.position.y;
+
+        if (altitude <= altitudeEffectStart)
+            return 1f;
+
+        if (altitude >= maxAltitude)
+            return 0f;
+
+        // altitudeEffectStart ~ maxAltitude 구간에서 선형 감소
+        float t = (altitude - altitudeEffectStart) / (maxAltitude - altitudeEffectStart);
+        return 1f - t;
     }
 
     // Applies a simple drag force to slow the aircraft
@@ -140,8 +223,8 @@ public class AircraftController : MonoBehaviour
         Vector3 localVelocity = transform.InverseTransformDirection(velocity);
 
         Vector3 localDragForce = Vector3.zero;
-        // 전방 항력: 선형 비례 (관성 유지)
-        localDragForce.z = -localVelocity.z * drag * rb.mass;
+        // 전방 항력: 속도² 비례 (실제 공기역학)
+        localDragForce.z = -localVelocity.z * Mathf.Abs(localVelocity.z) * drag * rb.mass;
         // 측면 항력: 제곱 비례 (미끄러짐 강하게 억제, 기체 방향으로 정렬)
         localDragForce.x = -localVelocity.x * Mathf.Abs(localVelocity.x) * lateralDrag;
         // 수직 항력: 제곱 비례
@@ -166,9 +249,13 @@ public class AircraftController : MonoBehaviour
         }
         // minLiftSpeed 이하: 양력 없음
 
-        if (speedFactor > 0f)
+        // 고도에 따른 공기 밀도 효과 (양력에도 적용)
+        float altitudeEfficiency = GetAltitudeEfficiency();
+
+        if (speedFactor > 0f && altitudeEfficiency > 0f)
         {
-            float baseLift = speed * liftCoefficient * rb.mass / 100f;
+            // 양력 = 0.5 * 밀도 * 속도² * 면적 * 양력계수 (간소화)
+            float baseLift = speed * speed * liftCoefficient * rb.mass;
 
             // 받음각에 따른 양력 계산
             float aoaFactor = 0f;
@@ -199,12 +286,29 @@ public class AircraftController : MonoBehaviour
             float upDot = Vector3.Dot(transform.up, Vector3.up);
             upDot = Mathf.Clamp(upDot, -0.5f, 1f); // 뒤집히면 역양력
 
-            float liftPower = baseLift * aoaFactor * speedFactor * upDot;
+            float liftPower = baseLift * aoaFactor * speedFactor * upDot * altitudeEfficiency;
             Vector3 liftForce = transform.up * liftPower;
             rb.AddForce(liftForce, ForceMode.Force);
 
             // 디버그
             Debug.DrawRay(transform.position, transform.up * (liftPower / 100f), Color.green, 0.1f);
+        }
+
+        // 3. 유도 항력 (Induced Drag) - 받음각이 클수록 항력 증가
+        // 높은 받음각 = 에너지 소모 = 속도 감소
+        if (speed > 1f)
+        {
+            float absAoA = Mathf.Abs(currentAoA);
+            // 받음각의 제곱에 비례 (실제 물리와 유사)
+            float inducedDragFactor = (absAoA / 15f) * (absAoA / 15f);
+            float inducedDrag = speed * speed * inducedDragCoefficient * inducedDragFactor * altitudeEfficiency;
+
+            // 속도 반대 방향으로 항력 적용
+            Vector3 inducedDragForce = -velocity.normalized * inducedDrag;
+            rb.AddForce(inducedDragForce, ForceMode.Force);
+
+            // 디버그 (유도 항력 - 마젠타)
+            Debug.DrawRay(transform.position, inducedDragForce.normalized * (inducedDrag / 50f), Color.magenta, 0.1f);
         }
     }
 

@@ -35,16 +35,7 @@ public class CameraController : MonoBehaviour
         if (playerCamera == null)
             playerCamera = Camera.main;
 
-        // Find the AircraftController and connect it
-        aircraftController = FindObjectOfType<AircraftController>();
-        if (aircraftController != null)
-        {
-            aircraftController.SetCameraController(this);
-            // Get the Rigidbody from the AircraftController to follow it
-            aircraftRigidbody = aircraftController.rb;
-        }
-
-        // Find the VirtualCursorController
+        // VirtualCursorController 연결
         virtualCursor = FindObjectOfType<VirtualCursorController>();
         if (virtualCursor != null)
         {
@@ -57,7 +48,52 @@ public class CameraController : MonoBehaviour
         {
             aoaAction = playerInput.actions.FindAction("AOA");
         }
+
+        // GameManager가 없으면 기존 방식으로 자동 검색 (하위 호환)
+        if (GameManager.Instance == null)
+        {
+            var aircraft = FindObjectOfType<AircraftController>();
+            if (aircraft != null)
+            {
+                SetTarget(aircraft);
+            }
+        }
     }
+
+    // 타겟 기체 설정 (GameManager에서 호출)
+    public void SetTarget(AircraftController aircraft)
+    {
+        // 이전 기체 연결 해제
+        if (aircraftController != null)
+        {
+            aircraftController.SetCameraController(null);
+        }
+
+        aircraftController = aircraft;
+
+        if (aircraft != null)
+        {
+            aircraft.SetCameraController(this);
+            aircraftRigidbody = aircraft.rb;
+
+            // 카메라 회전을 기체 방향으로 초기화
+            transform.rotation = aircraft.transform.rotation;
+
+            // 커서 중앙으로 리셋
+            if (virtualCursor != null)
+            {
+                virtualCursor.ResetCursorToCenter();
+            }
+
+            Debug.Log($"[CameraController] Target set: {aircraft.name}");
+        }
+        else
+        {
+            aircraftRigidbody = null;
+        }
+    }
+
+    public AircraftController CurrentTarget => aircraftController;
 
     void Update()
     {
@@ -94,9 +130,10 @@ public class CameraController : MonoBehaviour
         transform.Rotate(Vector3.right, pitchRotation, Space.Self);
         transform.Rotate(Vector3.forward, rollRotation, Space.Self);
 
-        // 마우스를 움직이지 않을 때 자동 수평 복귀
-        bool hasMouseMovement = virtualCursor != null && virtualCursor.HasActiveMouseInput();
-        if (!hasMouseMovement)
+        // 커서가 중앙 근처에 있을 때만 자동 수평 복귀
+        // (커서가 끝단에 있으면 플레이어가 의도적으로 기동 중인 것)
+        bool cursorNearCenter = virtualCursor == null || virtualCursor.IsCursorNearCenter(0.1f);
+        if (cursorNearCenter)
         {
             ApplyAutoLevel();
         }
@@ -125,12 +162,6 @@ public class CameraController : MonoBehaviour
 
         // forward 축을 기준으로 회전 (roll만 변경)
         transform.Rotate(Vector3.forward, actualRotation, Space.Self);
-
-        // 커서도 부드럽게 중앙으로 이동 시작
-        if (virtualCursor != null)
-        {
-            virtualCursor.StartAutoLevelCentering();
-        }
     }
 
     // Sync the camera's position with the aircraft's Rigidbody

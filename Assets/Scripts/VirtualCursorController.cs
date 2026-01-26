@@ -24,15 +24,16 @@ public class VirtualCursorController : MonoBehaviour
     [Header("입력 감지")]
     public float inputThreshold = 0.1f;
 
+    [Header("자동 중앙 복귀")]
+    [Tooltip("가장자리에서 중앙까지 복귀하는 데 걸리는 시간 (초)")]
+    [Range(1f, 5f)]
+    public float centerReturnTime = 2.5f;
+
     private Vector2 virtualCursorPos;
     private Vector2 screenCenter;
     private bool wasApplicationFocused = true;
     private bool isInitialized = false;
     private bool hasActiveMouseInput = false;
-
-    // 부드러운 중앙 복귀용
-    private bool isAutoLeveling = false;
-    private Vector2 cursorVelocity = Vector2.zero;
 
     // 카메라 컨트롤러 참조
     private CameraController cameraController;
@@ -98,16 +99,21 @@ public class VirtualCursorController : MonoBehaviour
         bool hasMouseInput = adjustedDelta.magnitude > inputThreshold;
         hasActiveMouseInput = hasMouseInput;
 
+        // 1. 마우스 입력 적용
         if (hasMouseInput)
         {
             virtualCursorPos += adjustedDelta;
-            isAutoLeveling = false;
-            cursorVelocity = Vector2.zero;
         }
-        else if (isAutoLeveling)
+
+        // 2. 항상 중앙으로 약하게 복귀 (마우스 입력과 독립적)
+        float maxDistance = Mathf.Max(Screen.width, Screen.height) * 0.5f;
+        float returnSpeed = maxDistance / centerReturnTime; // 픽셀/초
+        virtualCursorPos = Vector2.MoveTowards(virtualCursorPos, screenCenter, returnSpeed * Time.deltaTime);
+
+        // 중앙에 충분히 가까우면 스냅 (떨림 방지)
+        if (Vector2.Distance(virtualCursorPos, screenCenter) < 1f)
         {
-            // 수평 복귀 중: SmoothDamp로 부드럽게 중앙으로 이동
-            virtualCursorPos = Vector2.SmoothDamp(virtualCursorPos, screenCenter, ref cursorVelocity, 0.15f);
+            virtualCursorPos = screenCenter;
         }
 
         if (confineCursor)
@@ -178,17 +184,19 @@ public class VirtualCursorController : MonoBehaviour
     }
     public bool HasActiveMouseInput() => hasActiveMouseInput;
 
+    // 커서가 중앙 근처에 있는지 확인 (수평 복귀 판단용)
+    public bool IsCursorNearCenter(float threshold = 0.05f)
+    {
+        Vector2 normalizedOffset = GetNormalizedInput();
+        return normalizedOffset.magnitude < threshold;
+    }
+
     public void ResetCursorToCenter()
     {
         virtualCursorPos = screenCenter;
         hasActiveMouseInput = false;
     }
 
-    // 수평 복귀 시작 (카메라 수평 복귀와 동기화)
-    public void StartAutoLevelCentering()
-    {
-        isAutoLeveling = true;
-    }
 
     void SetupRealCursor()
     {
