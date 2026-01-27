@@ -12,6 +12,12 @@ public class CameraController : MonoBehaviour
     public float aoaRotationMultiplier = 2f; // AOA 발동 시 카메라 감도 배율
     public Camera playerCamera;
 
+    [Header("카메라 위치 (3인칭)")]
+    [Tooltip("기체 뒤쪽 거리")]
+    public float cameraDistance = 20f;
+    [Tooltip("기체 위쪽 높이")]
+    public float cameraHeight = 5f;
+
     // The aircraft's Rigidbody, which represents the physical body
     public Rigidbody aircraftRigidbody;
 
@@ -117,23 +123,31 @@ public class CameraController : MonoBehaviour
 
     void ApplyCameraRotation()
     {
-        // AOA 발동 중이면 카메라 감도 증가 (더 빠른 회전 명령 가능)
+        // 마우스 입력이 없으면 카메라 방향 유지 (수평 복귀 안 함)
+        // 커서만 중앙으로 복귀 (VirtualCursorController에서 처리)
+        // 기체가 현재 카메라 방향으로 기수 맞춤
+    }
+
+    // 마우스 delta 기반 회전: 움직인 만큼만 회전
+    // 마우스 X = Yaw (좌우 회전), 마우스 Y = Pitch (상하)
+    public void ApplyMouseDelta(float pitchDelta, float yawDelta)
+    {
         float currentSpeed = cameraRotationSpeed;
         if (aircraftController != null && aircraftController.IsAoAActive)
         {
             currentSpeed *= aoaRotationMultiplier;
         }
 
-        float pitchRotation = pitchInput * currentSpeed * Time.deltaTime;
-        float rollRotation = -rollInput * currentSpeed * Time.deltaTime;
+        // delta를 직접 회전에 적용 (마우스 멈추면 회전도 멈춤)
+        float pitchRotation = pitchDelta * currentSpeed;
+        float yawRotation = yawDelta * currentSpeed;
 
         transform.Rotate(Vector3.right, pitchRotation, Space.Self);
-        transform.Rotate(Vector3.forward, rollRotation, Space.Self);
+        transform.Rotate(Vector3.up, yawRotation, Space.Self);
 
-        // 커서가 중앙 근처에 있을 때만 자동 수평 복귀
-        // (커서가 끝단에 있으면 플레이어가 의도적으로 기동 중인 것)
-        bool cursorNearCenter = virtualCursor == null || virtualCursor.IsCursorNearCenter(0.1f);
-        if (cursorNearCenter)
+        // 마우스 입력이 없을 때만 자동 수평 복귀 (롤만, 피치/요는 유지)
+        bool hasActiveInput = Mathf.Abs(pitchDelta) > 0.001f || Mathf.Abs(yawDelta) > 0.001f;
+        if (!hasActiveInput)
         {
             ApplyAutoLevel();
         }
@@ -164,12 +178,15 @@ public class CameraController : MonoBehaviour
         transform.Rotate(Vector3.forward, actualRotation, Space.Self);
     }
 
-    // Sync the camera's position with the aircraft's Rigidbody
+    // 3인칭: 카메라가 기체 뒤쪽에서 따라감
     void FollowAircraft()
     {
         if (aircraftRigidbody != null)
         {
-            transform.position = aircraftRigidbody.position;
+            // 카메라 자체의 backward + up 방향으로 오프셋
+            // 카메라가 위를 보면 → 기체 아래로 이동 → 기체 하부 노출
+            Vector3 offset = -transform.forward * cameraDistance + transform.up * cameraHeight;
+            transform.position = aircraftRigidbody.position + offset;
         }
     }
 

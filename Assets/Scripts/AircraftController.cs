@@ -313,17 +313,17 @@ public class AircraftController : MonoBehaviour
     }
 
     // Applies torque to rotate the aircraft towards the camera's direction
+    // 레드아웃 방지: 밀기(negative pitch) 대신 롤+당기기 선호
     void ApplyControlTorque()
     {
         if (cameraController == null) return;
 
         Transform cam = cameraController.transform;
 
-        // === Pitch & Yaw: forward 방향 맞추기 (angle-axis 방식) ===
+        // === 기존 angle-axis 방식으로 pitch/yaw 계산 ===
         Vector3 targetForward = cam.forward;
         Vector3 currentForward = transform.forward;
 
-        // forward 방향만을 위한 회전 계산
         Quaternion forwardRotation = Quaternion.FromToRotation(currentForward, targetForward);
         forwardRotation.ToAngleAxis(out float forwardAngle, out Vector3 forwardAxis);
 
@@ -336,21 +336,32 @@ public class AircraftController : MonoBehaviour
             localForwardAxis = transform.InverseTransformDirection(forwardAxis);
         }
 
-        // Pitch와 Yaw 오차 (forward 방향 일치용)
         float pitchError = localForwardAxis.x * forwardAngle;
         float yawError = localForwardAxis.y * forwardAngle;
 
-        // === Roll: 카메라 롤 + 월드 수평 블렌딩 ===
-        // 카메라 롤 오차 (카메라 up 기준)
+        // === 레드아웃 방지: 밀기(negative pitch)는 롤로 대체 ===
+        if (pitchError < 0)
+        {
+            // 밀기 대신 롤로 처리
+            pitchError = 0f;
+        }
+
+        // === 롤: 카메라 롤 + 목표 방향 보정 ===
         Vector3 camUpLocal = transform.InverseTransformDirection(cam.up);
-        float cameraRollError = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
+        float camRoll = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
 
-        // 월드 수평 오차 (월드 up 기준)
-        Vector3 worldUpLocal = transform.InverseTransformDirection(Vector3.up);
-        float worldRollError = Mathf.Atan2(-worldUpLocal.x, worldUpLocal.y) * Mathf.Rad2Deg;
+        // 목표가 아래에 있으면 뒤집기 위한 롤 추가
+        Vector3 targetLocal = transform.InverseTransformDirection(cam.forward).normalized;
+        float rollForTarget = 0f;
+        if (targetLocal.y > 0.1f) // 목표가 아래에 있음
+        {
+            // 목표를 위로 만드는 롤 (뒤집기)
+            rollForTarget = Mathf.Atan2(-targetLocal.x, -targetLocal.y) * Mathf.Rad2Deg;
+        }
 
-        // 블렌딩: 카메라 롤을 따라가되, 월드 수평으로도 복귀하려는 경향
-        float rollError = Mathf.Lerp(cameraRollError, worldRollError, worldLevelStrength);
+        // 목표가 아래 있을 때만 rollForTarget 사용, 아니면 카메라 롤
+        float rollBlend = Mathf.Clamp01(targetLocal.y * 2f); // y > 0.5면 완전히 뒤집기 모드
+        float rollError = Mathf.LerpAngle(camRoll, rollForTarget, rollBlend);
 
         // 현재 로컬 각속도 (degree/초)
         Vector3 localAngularVelocityDeg = transform.InverseTransformDirection(rb.angularVelocity) * Mathf.Rad2Deg;
@@ -362,17 +373,20 @@ public class AircraftController : MonoBehaviour
         float currentRollSpeed = rollSpeed * speedMult;
 
         // 각 축별 목표 각속도 계산 (degree/초)
+        // 오차가 있으면 최대 스펙으로 따라감 (단, 오버슈트 방지)
+        // 1프레임에 오차를 해소할 수 있는 속도를 계산하고, 최대 속도로 클램프
+        float frameRate = 1f / Time.fixedDeltaTime;
         Vector3 targetAngularVelocity = new Vector3(
-            Mathf.Clamp(pitchError * rotationP, -currentPitchSpeed, currentPitchSpeed),
-            Mathf.Clamp(yawError * rotationP, -currentYawSpeed, currentYawSpeed),
-            Mathf.Clamp(rollError * rotationP, -currentRollSpeed, currentRollSpeed)
+            Mathf.Clamp(pitchError * frameRate, -currentPitchSpeed, currentPitchSpeed),
+            Mathf.Clamp(yawError * frameRate, -currentYawSpeed, currentYawSpeed),
+            Mathf.Clamp(rollError * frameRate, -currentRollSpeed, currentRollSpeed)
         );
 
         // 목표 각속도와 현재 각속도의 차이
         Vector3 angularVelocityError = targetAngularVelocity - localAngularVelocityDeg;
 
-        // 토크 계산 (각가속도)
-        Vector3 localTorque = angularVelocityError * rotationP - localAngularVelocityDeg * rotationD * 0.1f;
+        // 토크 계산 - 목표 속도에 빠르게 도달하도록
+        Vector3 localTorque = angularVelocityError * rotationP;
 
         // degree를 radian으로 변환하여 적용
         Vector3 worldTorque = transform.TransformDirection(localTorque * Mathf.Deg2Rad);

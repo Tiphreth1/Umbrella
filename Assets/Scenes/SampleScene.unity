@@ -1161,14 +1161,12 @@ MonoBehaviour:
   virtualCursorUI: {fileID: 1690867620}
   canvas: {fileID: 962153438}
   sensitivity: 2
-  returnSpeed: 1
-  centerStopRadius: 10
   confineCursor: 1
   screenMargin: {x: 10, y: 10}
   lockRealCursor: 1
   hideRealCursor: 1
   inputThreshold: 0.1
-  centeringThreshold: 0.2
+  centerReturnTime: 2.5
 --- !u!1 &1317720421
 GameObject:
   m_ObjectHideFlags: 0

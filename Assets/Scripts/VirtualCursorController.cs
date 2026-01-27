@@ -34,6 +34,7 @@ public class VirtualCursorController : MonoBehaviour
     private bool wasApplicationFocused = true;
     private bool isInitialized = false;
     private bool hasActiveMouseInput = false;
+    private Vector2 lastMouseDelta = Vector2.zero;
 
     // 카메라 컨트롤러 참조
     private CameraController cameraController;
@@ -98,22 +99,24 @@ public class VirtualCursorController : MonoBehaviour
 
         bool hasMouseInput = adjustedDelta.magnitude > inputThreshold;
         hasActiveMouseInput = hasMouseInput;
+        lastMouseDelta = hasMouseInput ? adjustedDelta : Vector2.zero;
 
-        // 1. 마우스 입력 적용
+        // 커서 위치 업데이트 (시각적 피드백용)
         if (hasMouseInput)
         {
             virtualCursorPos += adjustedDelta;
         }
-
-        // 2. 항상 중앙으로 약하게 복귀 (마우스 입력과 독립적)
-        float maxDistance = Mathf.Max(Screen.width, Screen.height) * 0.5f;
-        float returnSpeed = maxDistance / centerReturnTime; // 픽셀/초
-        virtualCursorPos = Vector2.MoveTowards(virtualCursorPos, screenCenter, returnSpeed * Time.deltaTime);
-
-        // 중앙에 충분히 가까우면 스냅 (떨림 방지)
-        if (Vector2.Distance(virtualCursorPos, screenCenter) < 1f)
+        else
         {
-            virtualCursorPos = screenCenter;
+            // 마우스 입력 없을 때 중앙 복귀
+            float maxDistance = Mathf.Max(Screen.width, Screen.height) * 0.5f;
+            float returnSpeed = maxDistance / centerReturnTime;
+            virtualCursorPos = Vector2.MoveTowards(virtualCursorPos, screenCenter, returnSpeed * Time.deltaTime);
+
+            if (Vector2.Distance(virtualCursorPos, screenCenter) < 1f)
+            {
+                virtualCursorPos = screenCenter;
+            }
         }
 
         if (confineCursor)
@@ -148,22 +151,18 @@ public class VirtualCursorController : MonoBehaviour
     {
         if (cameraController == null) return;
 
-        Vector2 offset = virtualCursorPos - screenCenter;
-        Vector2 normalizedInput = new Vector2(
-            offset.x / (Screen.width * 0.5f),
-            offset.y / (Screen.height * 0.5f)
+        // 마우스 delta 기반: 움직인 만큼만 회전, 멈추면 멈춤
+        // 마우스 X = Yaw (좌우), 마우스 Y = Pitch (상하)
+        // 화면 크기로 정규화 (-1 ~ 1)
+        Vector2 normalizedDelta = new Vector2(
+            lastMouseDelta.x / (Screen.width * 0.5f),
+            lastMouseDelta.y / (Screen.height * 0.5f)
         );
 
-        normalizedInput = Vector2.ClampMagnitude(normalizedInput, 1f);
+        float pitch = -normalizedDelta.y;
+        float yaw = normalizedDelta.x;
 
-        float pitch = -normalizedInput.y;
-        float roll = normalizedInput.x;
-
-        float deadZone = 0.03f;
-        if (Mathf.Abs(pitch) < deadZone) pitch = 0f;
-        if (Mathf.Abs(roll) < deadZone) roll = 0f;
-
-        cameraController.SetPitchAndRollInput(pitch, roll);
+        cameraController.ApplyMouseDelta(pitch, yaw);
     }
 
     // 카메라 컨트롤러 설정
