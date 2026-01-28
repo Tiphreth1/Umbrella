@@ -153,14 +153,9 @@ public class VirtualCursorController : MonoBehaviour
 
         // 마우스 delta 기반: 움직인 만큼만 회전, 멈추면 멈춤
         // 마우스 X = Yaw (좌우), 마우스 Y = Pitch (상하)
-        // 화면 크기로 정규화 (-1 ~ 1)
-        Vector2 normalizedDelta = new Vector2(
-            lastMouseDelta.x / (Screen.width * 0.5f),
-            lastMouseDelta.y / (Screen.height * 0.5f)
-        );
-
-        float pitch = -normalizedDelta.y;
-        float yaw = normalizedDelta.x;
+        // raw delta 직접 사용 (정규화 없음)
+        float pitch = -lastMouseDelta.y * 0.01f;  // 픽셀 → 적절한 회전값
+        float yaw = lastMouseDelta.x * 0.01f;
 
         cameraController.ApplyMouseDelta(pitch, yaw);
     }

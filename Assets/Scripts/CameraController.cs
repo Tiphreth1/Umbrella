@@ -1,4 +1,4 @@
-﻿// CameraController.cs
+// CameraController.cs
 // This script is responsible for the player's view.
 // It rotates instantly and follows the physical position of the aircraft.
 
@@ -11,12 +11,6 @@ public class CameraController : MonoBehaviour
     public float cameraRotationSpeed = 100f;
     public float aoaRotationMultiplier = 2f; // AOA 발동 시 카메라 감도 배율
     public Camera playerCamera;
-
-    [Header("카메라 위치 (3인칭)")]
-    [Tooltip("기체 뒤쪽 거리")]
-    public float cameraDistance = 20f;
-    [Tooltip("기체 위쪽 높이")]
-    public float cameraHeight = 5f;
 
     // The aircraft's Rigidbody, which represents the physical body
     public Rigidbody aircraftRigidbody;
@@ -178,15 +172,12 @@ public class CameraController : MonoBehaviour
         transform.Rotate(Vector3.forward, actualRotation, Space.Self);
     }
 
-    // 3인칭: 카메라가 기체 뒤쪽에서 따라감
+    // 카메라 위치: 기체 위치를 따라감 (오프셋은 에디터에서 설정)
     void FollowAircraft()
     {
         if (aircraftRigidbody != null)
         {
-            // 카메라 자체의 backward + up 방향으로 오프셋
-            // 카메라가 위를 보면 → 기체 아래로 이동 → 기체 하부 노출
-            Vector3 offset = -transform.forward * cameraDistance + transform.up * cameraHeight;
-            transform.position = aircraftRigidbody.position + offset;
+            transform.position = aircraftRigidbody.position;
         }
     }
 

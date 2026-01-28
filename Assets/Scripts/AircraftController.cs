@@ -40,6 +40,14 @@ public class AircraftController : MonoBehaviour
     [Range(0f, 1f)]
     public float worldLevelStrength = 0.3f; // 월드 수평 복귀 강도 (0=카메라만, 1=월드만)
 
+    [Header("선회 설정")]
+    [Tooltip("이 각도 이하의 작은 선회는 요(Yaw)로만 처리")]
+    public float smallTurnThreshold = 5f;
+    [Tooltip("이 각도 이상의 큰 선회는 롤+피치로 처리")]
+    public float largeTurnThreshold = 20f;
+    [Tooltip("레드아웃 방지 임계값 (높을수록 덜 민감)")]
+    public float redoutThreshold = 30f;
+
     [Header("UI")]
     public TextMeshProUGUI altitudeText;
     public TextMeshProUGUI speedText;
@@ -313,14 +321,13 @@ public class AircraftController : MonoBehaviour
     }
 
     // Applies torque to rotate the aircraft towards the camera's direction
-    // 레드아웃 방지: 밀기(negative pitch) 대신 롤+당기기 선호
     void ApplyControlTorque()
     {
         if (cameraController == null) return;
 
         Transform cam = cameraController.transform;
 
-        // === 기존 angle-axis 방식으로 pitch/yaw 계산 ===
+        // === angle-axis 방식으로 pitch/yaw 계산 ===
         Vector3 targetForward = cam.forward;
         Vector3 currentForward = transform.forward;
 
@@ -339,29 +346,9 @@ public class AircraftController : MonoBehaviour
         float pitchError = localForwardAxis.x * forwardAngle;
         float yawError = localForwardAxis.y * forwardAngle;
 
-        // === 레드아웃 방지: 밀기(negative pitch)는 롤로 대체 ===
-        if (pitchError < 0)
-        {
-            // 밀기 대신 롤로 처리
-            pitchError = 0f;
-        }
-
-        // === 롤: 카메라 롤 + 목표 방향 보정 ===
+        // === 카메라 롤 따라가기 ===
         Vector3 camUpLocal = transform.InverseTransformDirection(cam.up);
-        float camRoll = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
-
-        // 목표가 아래에 있으면 뒤집기 위한 롤 추가
-        Vector3 targetLocal = transform.InverseTransformDirection(cam.forward).normalized;
-        float rollForTarget = 0f;
-        if (targetLocal.y > 0.1f) // 목표가 아래에 있음
-        {
-            // 목표를 위로 만드는 롤 (뒤집기)
-            rollForTarget = Mathf.Atan2(-targetLocal.x, -targetLocal.y) * Mathf.Rad2Deg;
-        }
-
-        // 목표가 아래 있을 때만 rollForTarget 사용, 아니면 카메라 롤
-        float rollBlend = Mathf.Clamp01(targetLocal.y * 2f); // y > 0.5면 완전히 뒤집기 모드
-        float rollError = Mathf.LerpAngle(camRoll, rollForTarget, rollBlend);
+        float rollError = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
 
         // 현재 로컬 각속도 (degree/초)
         Vector3 localAngularVelocityDeg = transform.InverseTransformDirection(rb.angularVelocity) * Mathf.Rad2Deg;
