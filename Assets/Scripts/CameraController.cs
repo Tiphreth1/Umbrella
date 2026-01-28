@@ -27,6 +27,9 @@ public class CameraController : MonoBehaviour
     private AircraftController aircraftController;
     private VirtualCursorController virtualCursor;
 
+    // 실속 상태
+    private float currentStallIntensity = 0f;
+
     void Start()
     {
         if (playerCamera == null)
@@ -102,6 +105,9 @@ public class CameraController : MonoBehaviour
 
         // Rotate the camera instantly based on player input
         ApplyCameraRotation();
+
+        // 실속 효과 적용
+        ApplyStallEffect();
 
         // Make the camera follow the aircraft's physical position
         FollowAircraft();
@@ -207,4 +213,29 @@ public class CameraController : MonoBehaviour
 
     // 현재 롤 입력값 (외부에서 확인용)
     public float RollInput => rollInput;
+
+    // 실속 강도 설정 (AircraftController에서 호출)
+    public void SetStallIntensity(float intensity)
+    {
+        currentStallIntensity = intensity;
+    }
+
+    // 실속 시 카메라 강제 하향
+    void ApplyStallEffect()
+    {
+        if (currentStallIntensity <= 0f) return;
+
+        // 실속 시 카메라가 급격하게 아래를 보도록 강제
+        float stallPitchSpeed = 120f * currentStallIntensity;  // 초당 최대 120도
+        transform.Rotate(Vector3.right, stallPitchSpeed * Time.deltaTime, Space.Self);
+
+        // 실속 시 카메라 흔들림 (더 강하게)
+        if (currentStallIntensity > 0.2f)
+        {
+            float shakeRoll = Mathf.Sin(Time.time * 12f) * 5f * currentStallIntensity;
+            float shakePitch = Mathf.Sin(Time.time * 8f) * 3f * currentStallIntensity;
+            transform.Rotate(Vector3.forward, shakeRoll * Time.deltaTime * 10f, Space.Self);
+            transform.Rotate(Vector3.right, shakePitch * Time.deltaTime * 5f, Space.Self);
+        }
+    }
 }

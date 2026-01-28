@@ -78,6 +78,9 @@ public class AircraftController : MonoBehaviour
     // 현재 받음각 (디버깅용)
     private float currentAoA = 0f;
 
+    // 실속 지속 시간 추적 (점진적 실속 각도용)
+    private float stallDuration = 0f;
+
     // AOA 제한기가 실제로 해제되었는지 (입력 + 쿨타임 아님)
     private bool IsAoALimiterDisabled => aoaInputPressed && !aoaOnCooldown;
 
@@ -88,12 +91,6 @@ public class AircraftController : MonoBehaviour
             rb = GetComponent<Rigidbody>();
         }
 
-        // 프로필이 있으면 적용
-        if (profile != null)
-        {
-            ApplyProfile(profile);
-        }
-
         // Use realistic gravity setting
         rb.useGravity = true;
         // CRITICAL: Rigidbody의 기본 Drag를 0으로 설정 (우리가 직접 계산하므로)
@@ -102,54 +99,6 @@ public class AircraftController : MonoBehaviour
         rb.linearVelocity = transform.forward * 80f; // 80 m/s (288 km/h)로 시작
 
         Debug.Log($"Aircraft initialized - {(profile != null ? profile.aircraftName : "Default")} - Mass: {rb.mass}kg");
-    }
-
-    // 프로필 적용 (런타임에서도 호출 가능)
-    public void ApplyProfile(AircraftProfile newProfile)
-    {
-        if (newProfile == null) return;
-
-        profile = newProfile;
-
-        // 엔진
-        enginePower = newProfile.enginePower;
-        maxAltitude = newProfile.maxAltitude;
-        altitudeEffectStart = newProfile.altitudeEffectStart;
-
-        // 공력
-        drag = newProfile.drag;
-        lateralDrag = newProfile.lateralDrag;
-        inducedDragCoefficient = newProfile.inducedDragCoefficient;
-        liftCoefficient = newProfile.liftCoefficient;
-
-        // 실속
-        minLiftSpeed = newProfile.minLiftSpeed;
-        stallSpeed = newProfile.stallSpeed;
-
-        // 기동성
-        pitchSpeed = newProfile.pitchSpeed;
-        yawSpeed = newProfile.yawSpeed;
-        rollSpeed = newProfile.rollSpeed;
-
-        // 안정성
-        rotationP = newProfile.rotationP;
-        rotationD = newProfile.rotationD;
-        worldLevelStrength = newProfile.worldLevelStrength;
-
-        // AOA
-        maxAoAWithLimiter = newProfile.maxAoAWithLimiter;
-        maxAoAWithoutLimiter = newProfile.maxAoAWithoutLimiter;
-        aoaLimiterStrength = newProfile.aoaLimiterStrength;
-        aoaSpeedMultiplier = newProfile.aoaSpeedMultiplier;
-        aoaCooldown = newProfile.aoaCooldown;
-
-        // 질량
-        if (rb != null)
-        {
-            rb.mass = newProfile.mass;
-        }
-
-        Debug.Log($"Profile applied: {newProfile.aircraftName}");
     }
 
     void Update()
@@ -349,6 +298,65 @@ public class AircraftController : MonoBehaviour
         // === 카메라 롤 따라가기 ===
         Vector3 camUpLocal = transform.InverseTransformDirection(cam.up);
         float rollError = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
+
+        // === 좌우 선회 방식 결정 (요 vs 롤+피치) ===
+        float absYaw = Mathf.Abs(yawError);
+
+        if (absYaw > smallTurnThreshold)
+        {
+            // 선회 비율 계산: smallTurn~largeTurn 구간에서 0→1
+            float turnBlend = Mathf.Clamp01((absYaw - smallTurnThreshold) / (largeTurnThreshold - smallTurnThreshold));
+
+            // 큰 선회일수록: 요 감소, 롤+피치 증가
+            float yawReduction = turnBlend * 0.9f;  // 최대 90% 요 감소
+            float rollAddition = -Mathf.Sign(yawError) * absYaw * turnBlend;  // 선회 방향으로 롤 (부호 반전)
+            float pitchAddition = absYaw * turnBlend * 0.3f;  // 당기기 (선회 시 기수 올림)
+
+            // 적용
+            yawError *= (1f - yawReduction);
+            rollError += rollAddition;
+            pitchError += pitchAddition;
+        }
+
+        // === 실속 시 기수 내림 ===
+        // 속도가 실속 속도 이하면 기수가 아래로 향함
+        float speed = rb.linearVelocity.magnitude;
+        float stallIntensity = 0f;
+
+        if (speed < stallSpeed)
+        {
+            // 실속 강도: 속도가 낮을수록 강하게
+            stallIntensity = 1f - (speed / stallSpeed);  // 0~1
+            stallIntensity = stallIntensity * stallIntensity;  // 제곱으로 더 급격하게
+
+            // 실속 지속 시간 누적
+            stallDuration += Time.fixedDeltaTime;
+
+            // 점진적 실속 각도: 초기 45° → 최대 80° (3초에 걸쳐 증가)
+            float initialStallPitch = 45f;
+            float maxStallPitch = 80f;
+            float pitchProgressTime = 3f; // 최대 각도까지 걸리는 시간 (초)
+            float pitchProgress = Mathf.Clamp01(stallDuration / pitchProgressTime);
+            float targetStallPitch = Mathf.Lerp(initialStallPitch, maxStallPitch, pitchProgress);
+
+            float stallPitch = targetStallPitch * stallIntensity;
+            pitchError = Mathf.Lerp(pitchError, stallPitch, stallIntensity);
+
+            // 실속 시 조종 거의 무력화
+            yawError *= (1f - stallIntensity * 0.95f);
+            rollError *= (1f - stallIntensity * 0.9f);
+        }
+        else
+        {
+            // 실속 해제 시 지속 시간 리셋
+            stallDuration = 0f;
+        }
+
+        // 카메라에 실속 상태 전달
+        if (cameraController != null)
+        {
+            cameraController.SetStallIntensity(stallIntensity);
+        }
 
         // 현재 로컬 각속도 (degree/초)
         Vector3 localAngularVelocityDeg = transform.InverseTransformDirection(rb.angularVelocity) * Mathf.Rad2Deg;
