@@ -310,7 +310,7 @@ public class AircraftController : MonoBehaviour
             // 큰 선회일수록: 요 감소, 롤+피치 증가
             float yawReduction = turnBlend * 0.9f;  // 최대 90% 요 감소
             float rollAddition = -Mathf.Sign(yawError) * absYaw * turnBlend;  // 선회 방향으로 롤 (부호 반전)
-            float pitchAddition = absYaw * turnBlend * 0.3f;  // 당기기 (선회 시 기수 올림)
+            float pitchAddition = -absYaw * turnBlend * 0.3f;  // 당기기 (음수 = 기수 올림)
 
             // 적용
             yawError *= (1f - yawReduction);

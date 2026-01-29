@@ -35,6 +35,7 @@ public class VirtualCursorController : MonoBehaviour
     private bool isInitialized = false;
     private bool hasActiveMouseInput = false;
     private Vector2 lastMouseDelta = Vector2.zero;
+    private int skipFrames = 0;  // 시작 시 몇 프레임 무시
 
     // 카메라 컨트롤러 참조
     private CameraController cameraController;
@@ -69,6 +70,7 @@ public class VirtualCursorController : MonoBehaviour
 
         SetupRealCursor();
         isInitialized = true;
+        skipFrames = 5;  // 첫 5프레임 마우스 입력 무시
 
         Debug.Log($"[VirtualCursor] Initialized - Center: {screenCenter}, Screen: {Screen.width}x{Screen.height}, Cursor: {virtualCursorPos}");
     }
@@ -94,6 +96,15 @@ public class VirtualCursorController : MonoBehaviour
 
     void HandleMouseInput()
     {
+        // 시작 직후 몇 프레임은 마우스 입력 무시 (델타 스파이크 방지)
+        if (skipFrames > 0)
+        {
+            skipFrames--;
+            lastMouseDelta = Vector2.zero;
+            hasActiveMouseInput = false;
+            return;
+        }
+
         Vector2 mouseDelta = Mouse.current.delta.ReadValue();
         Vector2 adjustedDelta = mouseDelta * sensitivity;
 
@@ -213,6 +224,7 @@ public class VirtualCursorController : MonoBehaviour
         if (Application.isFocused && !wasApplicationFocused)
         {
             SetupRealCursor();
+            skipFrames = 5;  // 포커스 복귀 시에도 몇 프레임 무시
         }
         wasApplicationFocused = Application.isFocused;
     }
