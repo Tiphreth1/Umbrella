@@ -64,6 +64,8 @@ public class AircraftController : MonoBehaviour
 
     // A reference to the CameraController to get the target direction
     private CameraController cameraController;
+    // A reference to VirtualCursorController for cursor-based control
+    private VirtualCursorController virtualCursor;
     // The current input values for throttle, pitch, and roll
     private float throttleInput;
     private float pitchInput;
@@ -97,6 +99,9 @@ public class AircraftController : MonoBehaviour
         rb.linearDamping = 0f;
         rb.angularDamping = 0f; // 각속도 댐핑도 우리가 직접 계산
         rb.linearVelocity = transform.forward * 80f; // 80 m/s (288 km/h)로 시작
+
+        // VirtualCursorController 연결
+        virtualCursor = FindObjectOfType<VirtualCursorController>();
 
         Debug.Log($"Aircraft initialized - {(profile != null ? profile.aircraftName : "Default")} - Mass: {rb.mass}kg");
     }
@@ -269,86 +274,40 @@ public class AircraftController : MonoBehaviour
         }
     }
 
-    // Applies torque to rotate the aircraft towards the camera's direction
+    // 기체 forward를 카메라 forward로 직접 보간
+    // 회전 속도는 기체 능력치(pitchSpeed, rollSpeed)로 제한
     void ApplyControlTorque()
     {
         if (cameraController == null) return;
 
-        Transform cam = cameraController.transform;
+        Vector3 camForward = cameraController.transform.forward;
 
-        // === angle-axis 방식으로 pitch/yaw 계산 ===
-        Vector3 targetForward = cam.forward;
-        Vector3 currentForward = transform.forward;
-
-        Quaternion forwardRotation = Quaternion.FromToRotation(currentForward, targetForward);
-        forwardRotation.ToAngleAxis(out float forwardAngle, out Vector3 forwardAxis);
-
-        if (forwardAngle > 180f) forwardAngle -= 360f;
-
-        Vector3 localForwardAxis = Vector3.zero;
-        if (forwardAxis.sqrMagnitude > 0.001f)
+        // === 커서 방향 = 목표 롤 각도 ===
+        // 항상 커서 위치를 따라감 (커서가 중앙 복귀하면 기체도 따라서 수평 복귀)
+        float targetRollAngle = 0f;
+        if (virtualCursor != null)
         {
-            forwardAxis.Normalize();
-            localForwardAxis = transform.InverseTransformDirection(forwardAxis);
+            Vector2 cursorOffset = virtualCursor.GetNormalizedInput();
+            targetRollAngle = Mathf.Atan2(cursorOffset.x, cursorOffset.y) * Mathf.Rad2Deg;
         }
 
-        float pitchError = localForwardAxis.x * forwardAngle;
-        float yawError = localForwardAxis.y * forwardAngle;
-
-        // === 카메라 롤 따라가기 ===
-        Vector3 camUpLocal = transform.InverseTransformDirection(cam.up);
-        float rollError = Mathf.Atan2(-camUpLocal.x, camUpLocal.y) * Mathf.Rad2Deg;
-
-        // === 좌우 선회 방식 결정 (요 vs 롤+피치) ===
-        float absYaw = Mathf.Abs(yawError);
-
-        if (absYaw > smallTurnThreshold)
-        {
-            // 선회 비율 계산: smallTurn~largeTurn 구간에서 0→1
-            float turnBlend = Mathf.Clamp01((absYaw - smallTurnThreshold) / (largeTurnThreshold - smallTurnThreshold));
-
-            // 큰 선회일수록: 요 감소, 롤+피치 증가
-            float yawReduction = turnBlend * 0.9f;  // 최대 90% 요 감소
-            float rollAddition = -Mathf.Sign(yawError) * absYaw * turnBlend;  // 선회 방향으로 롤 (부호 반전)
-            float pitchAddition = -absYaw * turnBlend * 0.3f;  // 당기기 (음수 = 기수 올림)
-
-            // 적용
-            yawError *= (1f - yawReduction);
-            rollError += rollAddition;
-            pitchError += pitchAddition;
-        }
-
-        // === 실속 시 기수 내림 ===
-        // 속도가 실속 속도 이하면 기수가 아래로 향함
+        // === 실속 체크 ===
         float speed = rb.linearVelocity.magnitude;
         float stallIntensity = 0f;
 
         if (speed < stallSpeed)
         {
-            // 실속 강도: 속도가 낮을수록 강하게
-            stallIntensity = 1f - (speed / stallSpeed);  // 0~1
-            stallIntensity = stallIntensity * stallIntensity;  // 제곱으로 더 급격하게
-
-            // 실속 지속 시간 누적
+            stallIntensity = 1f - (speed / stallSpeed);
+            stallIntensity = stallIntensity * stallIntensity;
             stallDuration += Time.fixedDeltaTime;
 
-            // 점진적 실속 각도: 초기 45° → 최대 80° (3초에 걸쳐 증가)
-            float initialStallPitch = 45f;
-            float maxStallPitch = 80f;
-            float pitchProgressTime = 3f; // 최대 각도까지 걸리는 시간 (초)
-            float pitchProgress = Mathf.Clamp01(stallDuration / pitchProgressTime);
-            float targetStallPitch = Mathf.Lerp(initialStallPitch, maxStallPitch, pitchProgress);
-
-            float stallPitch = targetStallPitch * stallIntensity;
-            pitchError = Mathf.Lerp(pitchError, stallPitch, stallIntensity);
-
-            // 실속 시 조종 거의 무력화
-            yawError *= (1f - stallIntensity * 0.95f);
-            rollError *= (1f - stallIntensity * 0.9f);
+            // 실속 시 기수 강제 하향
+            float stallPitchAmount = Mathf.Lerp(30f, 60f, Mathf.Clamp01(stallDuration / 3f)) * stallIntensity;
+            camForward = Vector3.RotateTowards(camForward, Vector3.down, stallPitchAmount * Mathf.Deg2Rad, 0f);
+            targetRollAngle *= (1f - stallIntensity * 0.9f);
         }
         else
         {
-            // 실속 해제 시 지속 시간 리셋
             stallDuration = 0f;
         }
 
@@ -358,34 +317,31 @@ public class AircraftController : MonoBehaviour
             cameraController.SetStallIntensity(stallIntensity);
         }
 
-        // 현재 로컬 각속도 (degree/초)
-        Vector3 localAngularVelocityDeg = transform.InverseTransformDirection(rb.angularVelocity) * Mathf.Rad2Deg;
+        // === 목표 회전 계산 ===
+        // 1. 카메라 forward 방향
+        Vector3 targetForward = camForward;
 
-        // AOA 해제 시 회전 속도 증가
+        // 2. 커서 방향으로 up 벡터 회전 (롤)
+        // 월드 up을 카메라 forward 축으로 회전시켜 롤 적용
+        Vector3 targetUp = Quaternion.AngleAxis(-targetRollAngle, camForward) * Vector3.up;
+
+        // 3. LookRotation으로 최종 회전
+        Quaternion targetRotation = Quaternion.LookRotation(targetForward, targetUp);
+
+        // === 회전 속도 제한 (기체 능력치 기반) ===
         float speedMult = IsAoALimiterDisabled ? aoaSpeedMultiplier : 1f;
-        float currentPitchSpeed = pitchSpeed * speedMult;
-        float currentYawSpeed = yawSpeed * speedMult;
-        float currentRollSpeed = rollSpeed * speedMult;
+        float maxRotationSpeed = Mathf.Max(pitchSpeed, rollSpeed) * speedMult;
+        float maxDelta = maxRotationSpeed * Time.fixedDeltaTime;
 
-        // 각 축별 목표 각속도 계산 (degree/초)
-        // 오차가 있으면 최대 스펙으로 따라감 (단, 오버슈트 방지)
-        // 1프레임에 오차를 해소할 수 있는 속도를 계산하고, 최대 속도로 클램프
-        float frameRate = 1f / Time.fixedDeltaTime;
-        Vector3 targetAngularVelocity = new Vector3(
-            Mathf.Clamp(pitchError * frameRate, -currentPitchSpeed, currentPitchSpeed),
-            Mathf.Clamp(yawError * frameRate, -currentYawSpeed, currentYawSpeed),
-            Mathf.Clamp(rollError * frameRate, -currentRollSpeed, currentRollSpeed)
-        );
+        // === 커서 복귀 속도도 기체 속도에 맞춤 ===
+        if (virtualCursor != null)
+        {
+            virtualCursor.SetReturnSpeed(rollSpeed * speedMult);
+        }
 
-        // 목표 각속도와 현재 각속도의 차이
-        Vector3 angularVelocityError = targetAngularVelocity - localAngularVelocityDeg;
-
-        // 토크 계산 - 목표 속도에 빠르게 도달하도록
-        Vector3 localTorque = angularVelocityError * rotationP;
-
-        // degree를 radian으로 변환하여 적용
-        Vector3 worldTorque = transform.TransformDirection(localTorque * Mathf.Deg2Rad);
-        rb.AddTorque(worldTorque, ForceMode.Acceleration);
+        // === 보간 후 적용 ===
+        Quaternion newRotation = Quaternion.RotateTowards(transform.rotation, targetRotation, maxDelta);
+        rb.MoveRotation(newRotation);
     }
 
     // PD 컨트롤러에 D항이 포함되어 있으므로 별도 damping 불필요

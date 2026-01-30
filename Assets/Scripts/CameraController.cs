@@ -130,6 +130,7 @@ public class CameraController : MonoBehaviour
 
     // 마우스 delta 기반 회전: 움직인 만큼만 회전
     // 마우스 X = Yaw (좌우 회전), 마우스 Y = Pitch (상하)
+    // 카메라는 roll 없음 - yaw는 월드 기준
     public void ApplyMouseDelta(float pitchDelta, float yawDelta)
     {
         float currentSpeed = cameraRotationSpeed;
@@ -138,44 +139,13 @@ public class CameraController : MonoBehaviour
             currentSpeed *= aoaRotationMultiplier;
         }
 
-        // delta를 직접 회전에 적용 (마우스 멈추면 회전도 멈춤)
         float pitchRotation = pitchDelta * currentSpeed;
         float yawRotation = yawDelta * currentSpeed;
 
+        // Pitch: 로컬 X축 기준 (카메라가 바라보는 방향에서 상하)
         transform.Rotate(Vector3.right, pitchRotation, Space.Self);
-        transform.Rotate(Vector3.up, yawRotation, Space.Self);
-
-        // 마우스 입력이 없을 때만 자동 수평 복귀 (롤만, 피치/요는 유지)
-        bool hasActiveInput = Mathf.Abs(pitchDelta) > 0.001f || Mathf.Abs(yawDelta) > 0.001f;
-        if (!hasActiveInput)
-        {
-            ApplyAutoLevel();
-        }
-    }
-
-    void ApplyAutoLevel()
-    {
-        if (aircraftController == null) return;
-
-        Vector3 currentForward = transform.forward;
-
-        // forward가 거의 수직이면 수평 복귀 불가 (gimbal lock 방지)
-        if (Mathf.Abs(Vector3.Dot(currentForward, Vector3.up)) > 0.99f)
-            return;
-
-        // 목표 up: forward에 수직이면서 월드 up에 최대한 가까운 벡터
-        Vector3 targetUp = Vector3.up - Vector3.Dot(Vector3.up, currentForward) * currentForward;
-        targetUp.Normalize();
-
-        // 현재 up과 목표 up 사이의 각도 (수평까지 남은 각도)
-        float angleToLevel = Vector3.SignedAngle(transform.up, targetUp, currentForward);
-
-        // 기체의 rollSpeed에 맞춰 최대 회전 속도 제한
-        float maxRotation = aircraftController.rollSpeed * Time.deltaTime;
-        float actualRotation = Mathf.Clamp(angleToLevel, -maxRotation, maxRotation);
-
-        // forward 축을 기준으로 회전 (roll만 변경)
-        transform.Rotate(Vector3.forward, actualRotation, Space.Self);
+        // Yaw: 월드 Y축 기준 (roll 발생 방지)
+        transform.Rotate(Vector3.up, yawRotation, Space.World);
     }
 
     // 카메라 위치: 기체 위치를 따라감 (오프셋은 에디터에서 설정)
@@ -220,7 +190,7 @@ public class CameraController : MonoBehaviour
         currentStallIntensity = intensity;
     }
 
-    // 실속 시 카메라 강제 하향
+    // 실속 시 카메라 강제 하향 (roll 없음)
     void ApplyStallEffect()
     {
         if (currentStallIntensity <= 0f) return;
@@ -229,12 +199,10 @@ public class CameraController : MonoBehaviour
         float stallPitchSpeed = 120f * currentStallIntensity;  // 초당 최대 120도
         transform.Rotate(Vector3.right, stallPitchSpeed * Time.deltaTime, Space.Self);
 
-        // 실속 시 카메라 흔들림 (더 강하게)
+        // 실속 시 카메라 흔들림 (피치만, roll 없음)
         if (currentStallIntensity > 0.2f)
         {
-            float shakeRoll = Mathf.Sin(Time.time * 12f) * 5f * currentStallIntensity;
             float shakePitch = Mathf.Sin(Time.time * 8f) * 3f * currentStallIntensity;
-            transform.Rotate(Vector3.forward, shakeRoll * Time.deltaTime * 10f, Space.Self);
             transform.Rotate(Vector3.right, shakePitch * Time.deltaTime * 5f, Space.Self);
         }
     }

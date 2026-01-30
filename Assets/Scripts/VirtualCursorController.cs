@@ -37,6 +37,9 @@ public class VirtualCursorController : MonoBehaviour
     private Vector2 lastMouseDelta = Vector2.zero;
     private int skipFrames = 0;  // 시작 시 몇 프레임 무시
 
+    // 기체 회전 속도 기반 복귀 속도 (도/초)
+    private float aircraftReturnSpeed = 90f;
+
     // 카메라 컨트롤러 참조
     private CameraController cameraController;
 
@@ -119,9 +122,11 @@ public class VirtualCursorController : MonoBehaviour
         }
         else
         {
-            // 마우스 입력 없을 때 중앙 복귀
-            float maxDistance = Mathf.Max(Screen.width, Screen.height) * 0.5f;
-            float returnSpeed = maxDistance / centerReturnTime;
+            // 마우스 입력 없으면 커서 중앙으로 복귀 (기체 회전 속도에 맞춤)
+            // aircraftReturnSpeed(도/초) → 화면 거리/초
+            // 90도 롤 = 화면 절반 거리
+            float screenHalf = Mathf.Max(Screen.width, Screen.height) * 0.5f;
+            float returnSpeed = (aircraftReturnSpeed / 90f) * screenHalf;
             virtualCursorPos = Vector2.MoveTowards(virtualCursorPos, screenCenter, returnSpeed * Time.deltaTime);
 
             if (Vector2.Distance(virtualCursorPos, screenCenter) < 1f)
@@ -200,6 +205,12 @@ public class VirtualCursorController : MonoBehaviour
     {
         virtualCursorPos = screenCenter;
         hasActiveMouseInput = false;
+    }
+
+    // 기체 회전 속도에 맞춰 복귀 속도 설정 (AircraftController에서 호출)
+    public void SetReturnSpeed(float rollSpeedDegPerSec)
+    {
+        aircraftReturnSpeed = rollSpeedDegPerSec;
     }
 
 

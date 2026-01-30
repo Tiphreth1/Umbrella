@@ -522,12 +522,16 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1971610022}
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
+      propertyPath: rotationSpeed
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: aircraftRigidbody
       value: 
       objectReference: {fileID: 1335585336}
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: cameraRotationSpeed
-      value: 100
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: useDirectPositioning
@@ -990,11 +994,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: yawSpeed
-      value: 90
+      value: 60
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: rollSpeed
-      value: 90
+      value: 60
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: rotationD
@@ -1010,7 +1014,7 @@ PrefabInstance:
       objectReference: {fileID: 2004562270}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: pitchSpeed
-      value: 90
+      value: 60
       objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: enginePower
