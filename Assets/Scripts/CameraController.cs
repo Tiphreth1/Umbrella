@@ -12,9 +12,6 @@ public class CameraController : MonoBehaviour
     public float aoaRotationMultiplier = 2f; // AOA 발동 시 카메라 감도 배율
     public Camera playerCamera;
 
-    // The aircraft's Rigidbody, which represents the physical body
-    public Rigidbody aircraftRigidbody;
-
     // Input values
     private float pitchInput;
     private float rollInput;
@@ -23,8 +20,9 @@ public class CameraController : MonoBehaviour
     // AOA 입력 폴링용
     private InputAction aoaAction;
 
-    // Reference to the AircraftController for communication
-    private AircraftController aircraftController;
+    // Reference to controllers
+    private AircraftController aircraftController; // 시각적 기체
+    private FlightProxyController flightProxy;     // 실제 물리/조작
     private VirtualCursorController virtualCursor;
 
     // 실속 상태
@@ -52,6 +50,9 @@ public class CameraController : MonoBehaviour
             aoaAction = playerInput.actions.FindAction("AOA");
         }
 
+        // FlightProxy 찾기
+        flightProxy = FindObjectOfType<FlightProxyController>();
+
         // GameManager가 없으면 기존 방식으로 자동 검색 (하위 호환)
         if (GameManager.Instance == null)
         {
@@ -60,6 +61,12 @@ public class CameraController : MonoBehaviour
             {
                 SetTarget(aircraft);
             }
+        }
+
+        // FlightProxy 방향으로 카메라 초기화
+        if (flightProxy != null)
+        {
+            transform.rotation = flightProxy.transform.rotation;
         }
     }
 
@@ -77,10 +84,12 @@ public class CameraController : MonoBehaviour
         if (aircraft != null)
         {
             aircraft.SetCameraController(this);
-            aircraftRigidbody = aircraft.rb;
 
-            // 카메라 회전을 기체 방향으로 초기화
-            transform.rotation = aircraft.transform.rotation;
+            // FlightProxy 방향으로 초기화
+            if (flightProxy != null)
+            {
+                transform.rotation = flightProxy.transform.rotation;
+            }
 
             // 커서 중앙으로 리셋
             if (virtualCursor != null)
@@ -89,10 +98,6 @@ public class CameraController : MonoBehaviour
             }
 
             Debug.Log($"[CameraController] Target set: {aircraft.name}");
-        }
-        else
-        {
-            aircraftRigidbody = null;
         }
     }
 
@@ -115,10 +120,10 @@ public class CameraController : MonoBehaviour
 
     void PollAOAInput()
     {
-        if (aoaAction == null || aircraftController == null) return;
+        if (aoaAction == null || flightProxy == null) return;
 
         bool isPressed = aoaAction.IsPressed();
-        aircraftController.SetAOAInput(isPressed);
+        flightProxy.SetAOAInput(isPressed);
     }
 
     void ApplyCameraRotation()
@@ -134,7 +139,7 @@ public class CameraController : MonoBehaviour
     public void ApplyMouseDelta(float pitchDelta, float yawDelta)
     {
         float currentSpeed = cameraRotationSpeed;
-        if (aircraftController != null && aircraftController.IsAoAActive)
+        if (flightProxy != null && flightProxy.IsAoAActive)
         {
             currentSpeed *= aoaRotationMultiplier;
         }
@@ -148,12 +153,12 @@ public class CameraController : MonoBehaviour
         transform.Rotate(Vector3.up, yawRotation, Space.World);
     }
 
-    // 카메라 위치: 기체 위치를 따라감 (오프셋은 에디터에서 설정)
+    // 카메라 위치: FlightProxy 위치를 따라감
     void FollowAircraft()
     {
-        if (aircraftRigidbody != null)
+        if (flightProxy != null)
         {
-            transform.position = aircraftRigidbody.position;
+            transform.position = flightProxy.transform.position;
         }
     }
 
@@ -163,9 +168,16 @@ public class CameraController : MonoBehaviour
         Vector2 input = value.Get<Vector2>();
         throttleInput = Mathf.Clamp01(input.y);
 
-        if (aircraftController != null)
+        Debug.Log($"[Camera] OnThrottle received: {input}, throttle: {throttleInput:F2}");
+
+        // FlightProxy에 스로틀 전달
+        if (flightProxy != null)
         {
-            aircraftController.SetThrottleInput(throttleInput);
+            flightProxy.SetThrottleInput(throttleInput);
+        }
+        else
+        {
+            Debug.LogWarning("[Camera] FlightProxy is NULL - throttle not sent!");
         }
     }
 
@@ -193,16 +205,26 @@ public class CameraController : MonoBehaviour
     // 실속 시 카메라 강제 하향 (roll 없음)
     void ApplyStallEffect()
     {
-        if (currentStallIntensity <= 0f) return;
+        // FlightProxy에서 실속 강도 가져오기
+        float stallIntensity = flightProxy != null ? flightProxy.StallIntensity : currentStallIntensity;
+
+        if (stallIntensity <= 0f) return;
+
+        // 현재 카메라가 얼마나 아래를 보는지 확인
+        // forward.y가 -1에 가까우면 완전히 아래를 봄
+        float lookingDown = -transform.forward.y; // 0 = 수평, 1 = 완전 아래
+
+        // 이미 충분히 아래를 보고 있으면 더 이상 회전 안 함
+        if (lookingDown > 0.9f) return;
 
         // 실속 시 카메라가 급격하게 아래를 보도록 강제
-        float stallPitchSpeed = 120f * currentStallIntensity;  // 초당 최대 120도
+        float stallPitchSpeed = 120f * stallIntensity * (1f - lookingDown);  // 아래 볼수록 느려짐
         transform.Rotate(Vector3.right, stallPitchSpeed * Time.deltaTime, Space.Self);
 
         // 실속 시 카메라 흔들림 (피치만, roll 없음)
-        if (currentStallIntensity > 0.2f)
+        if (stallIntensity > 0.2f)
         {
-            float shakePitch = Mathf.Sin(Time.time * 8f) * 3f * currentStallIntensity;
+            float shakePitch = Mathf.Sin(Time.time * 8f) * 3f * stallIntensity;
             transform.Rotate(Vector3.right, shakePitch * Time.deltaTime * 5f, Space.Self);
         }
     }

@@ -4,7 +4,7 @@
 
 using UnityEngine;
 
-[RequireComponent(typeof(AircraftController))]
+[RequireComponent(typeof(FlightProxyController))]
 public class AIController : MonoBehaviour
 {
     [Header("AI 설정")]
@@ -18,7 +18,7 @@ public class AIController : MonoBehaviour
     [Header("행동 설정")]
     public AIBehavior behavior = AIBehavior.Patrol;
 
-    private AircraftController aircraft;
+    private FlightProxyController flightProxy;
     private Vector3 targetPosition;
     private float nextWaypointTime;
 
@@ -35,7 +35,7 @@ public class AIController : MonoBehaviour
 
     void Start()
     {
-        aircraft = GetComponent<AircraftController>();
+        flightProxy = GetComponent<FlightProxyController>();
 
         // 가상 카메라 생성 (AI의 목표 방향을 나타냄)
         var vcObj = new GameObject($"{name}_VirtualCamera");
@@ -43,9 +43,6 @@ public class AIController : MonoBehaviour
         virtualCamera.SetParent(transform);
         virtualCamera.localPosition = Vector3.zero;
         virtualCamera.localRotation = Quaternion.identity;
-
-        // AI용 가상 카메라 컨트롤러 연결
-        aircraft.SetCameraController(null); // 실제 카메라 연결 해제
 
         // 초기 목표 설정
         SetNewPatrolTarget();
@@ -79,7 +76,7 @@ public class AIController : MonoBehaviour
     {
         // 현재 방향 유지, 고도만 조절
         MaintainAltitude();
-        aircraft.SetThrottleInput(0.5f);
+        flightProxy.SetThrottleInput(0.5f);
     }
 
     void UpdatePatrol()
@@ -103,9 +100,9 @@ public class AIController : MonoBehaviour
         MaintainAltitude();
 
         // 스로틀 조절
-        float currentSpeed = aircraft.rb.linearVelocity.magnitude;
+        float currentSpeed = flightProxy.rb.linearVelocity.magnitude;
         float throttle = currentSpeed < targetSpeed ? 0.8f : 0.4f;
-        aircraft.SetThrottleInput(throttle);
+        flightProxy.SetThrottleInput(throttle);
     }
 
     void UpdateFollow()

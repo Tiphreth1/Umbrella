@@ -36,6 +36,7 @@ public class VirtualCursorController : MonoBehaviour
     private bool hasActiveMouseInput = false;
     private Vector2 lastMouseDelta = Vector2.zero;
     private int skipFrames = 0;  // 시작 시 몇 프레임 무시
+    private bool skipNextDelta = false;  // WarpCursorPosition 후 delta 무시용
 
     // 기체 회전 속도 기반 복귀 속도 (도/초)
     private float aircraftReturnSpeed = 90f;
@@ -108,6 +109,15 @@ public class VirtualCursorController : MonoBehaviour
             return;
         }
 
+        // WarpCursorPosition으로 인한 delta spike 무시
+        if (skipNextDelta)
+        {
+            skipNextDelta = false;
+            lastMouseDelta = Vector2.zero;
+            hasActiveMouseInput = false;
+            return;
+        }
+
         Vector2 mouseDelta = Mouse.current.delta.ReadValue();
         Vector2 adjustedDelta = mouseDelta * sensitivity;
 
@@ -145,6 +155,7 @@ public class VirtualCursorController : MonoBehaviour
         {
             Vector2 screenCenterInt = new Vector2(Mathf.RoundToInt(screenCenter.x), Mathf.RoundToInt(screenCenter.y));
             Mouse.current.WarpCursorPosition(screenCenterInt);
+            skipNextDelta = true;  // 다음 프레임 delta 무시
         }
     }
 
@@ -165,6 +176,16 @@ public class VirtualCursorController : MonoBehaviour
 
     void SendInputToCamera()
     {
+        // 카메라 컨트롤러 없으면 자동 검색 (fallback)
+        if (cameraController == null)
+        {
+            cameraController = FindObjectOfType<CameraController>();
+            if (cameraController != null)
+            {
+                Debug.Log("[VirtualCursor] CameraController 자동 연결됨");
+            }
+        }
+
         if (cameraController == null) return;
 
         // 마우스 delta 기반: 움직인 만큼만 회전, 멈추면 멈춤

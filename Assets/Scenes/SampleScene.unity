@@ -516,7 +516,7 @@ PrefabInstance:
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: aircraftBody
       value: 
-      objectReference: {fileID: 1335585337}
+      objectReference: {fileID: 0}
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: playerCamera
       value: 
@@ -528,7 +528,7 @@ PrefabInstance:
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: aircraftRigidbody
       value: 
-      objectReference: {fileID: 1335585336}
+      objectReference: {fileID: 0}
     - target: {fileID: 8357410184438092332, guid: 52e154088b70e7449b0d7937b3fcdc18, type: 3}
       propertyPath: cameraRotationSpeed
       value: 10
@@ -983,7 +983,7 @@ PrefabInstance:
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: rb
       value: 
-      objectReference: {fileID: 1335585336}
+      objectReference: {fileID: 0}
     - target: {fileID: 8290329559716012950, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
       propertyPath: drag
       value: 0.01
@@ -1044,7 +1044,8 @@ PrefabInstance:
       propertyPath: maxAoAWithoutLimiter
       value: 90
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 6738816180509713461, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
@@ -1305,16 +1306,6 @@ Transform:
   - {fileID: 790068148}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!54 &1335585336 stripped
-Rigidbody:
-  m_CorrespondingSourceObject: {fileID: 6738816180509713461, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
-  m_PrefabInstance: {fileID: 889396049}
-  m_PrefabAsset: {fileID: 0}
---- !u!4 &1335585337 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: 7110966028153504522, guid: 152cb5f32d2313842bb66f9c16fef459, type: 3}
-  m_PrefabInstance: {fileID: 889396049}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1550146579
 GameObject:
   m_ObjectHideFlags: 0
@@ -1378,6 +1369,122 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1326039387}
   m_LocalEulerAnglesHint: {x: -90, y: 0, z: 0}
+--- !u!1 &1640091421
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1640091422}
+  - component: {fileID: 1640091424}
+  - component: {fileID: 1640091423}
+  - component: {fileID: 1640091425}
+  m_Layer: 0
+  m_Name: FlightProxy
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1640091422
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1640091421}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 600, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1640091423
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1640091421}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e46af633a64ed2488da90625cf7a10d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rb: {fileID: 0}
+  aircraftMass: 1
+  enginePower: 100
+  drag: 0.001
+  lateralDrag: 0.3
+  inducedDragCoefficient: 0.05
+  liftCoefficient: 0.0003
+  minLiftSpeed: 30
+  stallSpeed: 50
+  maxAltitude: 15000
+  altitudeEffectStart: 8000
+  pitchSpeed: 90
+  yawSpeed: 20
+  rollSpeed: 50
+  aoaSpeedMultiplier: 1.5
+  maxAoAWithLimiter: 15
+  maxAoAWithoutLimiter: 45
+  aoaLimiterStrength: 30
+  aoaCooldown: 5
+  rotationP: 5
+  rotationD: 2.5
+  worldLevelStrength: 0.3
+--- !u!54 &1640091424
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1640091421}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
+--- !u!135 &1640091425
+SphereCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1640091421}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Radius: 0.5
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1690867619
 GameObject:
   m_ObjectHideFlags: 0
@@ -1604,5 +1711,6 @@ SceneRoots:
   - {fileID: 962153439}
   - {fileID: 172292461}
   - {fileID: 1326039387}
-  - {fileID: 889396049}
   - {fileID: 645585813}
+  - {fileID: 1640091422}
+  - {fileID: 889396049}
